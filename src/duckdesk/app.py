@@ -112,7 +112,10 @@ class AppController(QObject):
         self._dragging_duck = False
         self._drag_lift = 0
         self._fullscreen_hidden = False
-        self._mascot_fps_cap = 1.0 / 30.0
+        # 30 fps on an 8 ms tick: frames land on tick multiples, so allow half a
+        # tick of slack or the 33.3 ms cap rounds up to 40 ms (25 fps).
+        self._mascot_fps_cap = 1.0 / 30.0 - TICK_MS / 2000.0
+        self._duck_h_m: float | None = None  # measured on first mascot entry (ADR-0007)
         self.autopilot = None
         self._rng = np.random.default_rng()
         self._vel_hist: deque = deque(maxlen=int(1.0 / CONTROL_DT))
@@ -373,7 +376,7 @@ class AppController(QObject):
         from PySide6.QtGui import QGuiApplication
 
         from duckdesk.platform import win_taskbar
-        from duckdesk.platform.mascot_map import Dpi, MascotMapping, compute_band
+        from duckdesk.platform.mascot_map import H_M, Dpi, MascotMapping, compute_band
 
         screen = QGuiApplication.primaryScreen()
         dpi = Dpi(screen.devicePixelRatio())
@@ -386,8 +389,15 @@ class AppController(QObject):
         )
         if band.hidden:
             log.info("barra oculta/topo/lateral — modo degradado (chão = base da área de trabalho)")
-        size = int(self.settings["mascot_scale"] * 120)
-        self.mascot_map = MascotMapping(band, size)
+        from duckdesk.render.mascot import camera_axes
+
+        # 05 section 2: the menu sizes (80/120/180) are the DUCK height H; the
+        # window is S = 1.6 * H. Using 120 as S made the duck ~75 px tall.
+        size = round(1.6 * float(self.settings["mascot_scale"]) * 120)
+        _, right, _ = camera_axes()
+        self.mascot_map = MascotMapping(
+            band, size, h_m=self._duck_h_m or H_M, right=(float(right[0]), float(right[1]))
+        )
         if self.autopilot is not None:
             self.autopilot.x_min, self.autopilot.x_max = (
                 self.mascot_map.x_min,
@@ -400,9 +410,15 @@ class AppController(QObject):
         autopilot from IDLE."""
         from duckdesk.brain.autopilot import Autopilot
         from duckdesk.platform.mascot_map import MARGIN_FRAC
-        from duckdesk.render.mascot import MascotRenderer
+        from duckdesk.render.mascot import MascotRenderer, duck_screen_height_m
         from duckdesk.ui.mascot_window import MascotWindow
 
+        if self._duck_h_m is None:
+            # ADR-0007: ground -> top of head as the mascot camera sees it,
+            # measured from the meshes in the standing pose (not trunk z).
+            self.sim.reset()
+            self._duck_h_m = duck_screen_height_m(self.sim.model, self.sim.data.qpos)
+            log.info("altura do pato na tela: %.3f m", self._duck_h_m)
         self._mascot_band()
         mm = self.mascot_map
         last_x = mm.clamp_x(float(self.settings["mascot_last_x"]))
@@ -423,12 +439,9 @@ class AppController(QObject):
             enabled=bool(self.settings["autopilot"]),
         )
         screen = self.window.screen()
-        # 05 section 9: render at 2S_px physical for 2x supersampling
-        size_phys = round(
-            mm.S * screen.devicePixelRatio()
-        )  # MSAA in GL replaces manual supersample
+        # 05 section 9: the renderer draws at 2x this and box-filters down
+        size_phys = round(mm.S * screen.devicePixelRatio())
         self._mascot_renderer = MascotRenderer(self.sim.model, size_phys)
-        self._mascot_renderer.set_view_height(mm.ortho_height_m())
         self.mascot = MascotWindow(mm.S)
         m = round(MARGIN_FRAC * mm.S)
         self._mascot_margin = m
@@ -454,6 +467,8 @@ class AppController(QObject):
             self.mascot.hide()
             self.mascot.deleteLater()
         self.mascot = None
+        if self._mascot_renderer is not None:
+            self._mascot_renderer.close()  # free the GL context
         self._mascot_renderer = None
         self.autopilot = None
         self.keyboard = KeyboardMapper()  # command starts at zero (05 section 8)
@@ -504,9 +519,8 @@ class AppController(QObject):
         if x < self.mascot_map.x_min - 0.05 or x > self.mascot_map.x_max + 0.05:
             self._soft_clamp()
 
-        idle = self.autopilot is not None and self.autopilot.state.value == "idle"
-        cap = 1.0 / (12.0 if idle else 15.0)  # 05 section 9 allows up to 30; CPU target
-        if now - self._last_mascot_frame < cap:
+        # 30 fps always: below that the gait reads as stutter (ADR-0007).
+        if now - self._last_mascot_frame < self._mascot_fps_cap:
             return
         self._last_mascot_frame = now
         self._render_mascot_frame()
@@ -526,17 +540,26 @@ class AppController(QObject):
 
     def _render_mascot_frame(self) -> None:
         mm = self.mascot_map
-        x = float(self.sim.trunk_pos()[0])
-        center_px = mm.screen_x(x)
-        # ground z=0 lands on window row S-m (05 section 3)
-        lookat = np.array([x, 0.0, mm.ortho_height_m() / 2 - self._mascot_margin / mm.ppm])
-        frame = self._mascot_renderer.frame(self.sim.data, lookat)
-        self.mascot.set_frame(frame)
-        # move only when the pixel x changed (ADR-0005: no trembling)
-        cx = round(center_px) - mm.S // 2
+        rend = self._mascot_renderer
+        x, y, _ = (float(v) for v in self.sim.trunk_pos())
+        ground = np.array([x, y, 0.0])  # ground point under the trunk
+        exact = mm.screen_x(x, y)  # logical px of the duck on screen
+        left = round(exact - mm.S / 2)  # windows sit on whole pixels
+        # Shift the camera by the rounding remainder so the duck lands at its
+        # exact sub-pixel position inside the window: the window steps in
+        # whole pixels, the image compensates, nothing trembles (ADR-0005).
+        delta_px = (left + mm.S / 2) - exact
+        lookat = (
+            ground
+            + rend.right * (delta_px / mm.ppm)
+            + rend.up * ((mm.S / 2 - self._mascot_margin) / mm.ppm)
+        )
+        rend.set_view_height(mm.ortho_height_m())
+        frame = rend.frame(self.sim.data, lookat)
         top = round(mm.window_top(self._mascot_margin)) - self._drag_lift
-        if (cx, top) != (self.mascot.x(), self.mascot.y()):
-            self.mascot.move(cx, top)
+        if (left, top) != (self.mascot.x(), self.mascot.y()):
+            self.mascot.move(left, top)
+        self.mascot.set_frame(frame)
 
     def _mascot_click(self, _pos) -> None:
         if self.autopilot is None:

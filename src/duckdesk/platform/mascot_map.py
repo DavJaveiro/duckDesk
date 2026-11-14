@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-H_M = 0.1155  # standing duck height in meters (measured in M1, docs/relatorios/M1.md)
+# Fallback duck height (m) as SEEN by the mascot camera: ground -> top of head
+# in the standing pose. The app measures the real value from the meshes at
+# runtime (render.mascot.duck_screen_height_m); 0.1155 m (trunk z) was wrong —
+# it cut the head off (ADR-0007).
+H_M = 0.26
 MARGIN_FRAC = 0.04  # ground line sits S - round(0.04*S) px from window bottom
 EDGE_PAD_PX = 8  # keep the window this far inside the usable band
 
@@ -61,21 +65,38 @@ def compute_band(
 
 
 class MascotMapping:
-    """screen_x(x) = center + x*ppm and the x range from 05 section 3."""
+    """World <-> screen for the mascot (05 section 3, ADR-0007).
 
-    def __init__(self, band: GroundBand, size_px: int):
+    The camera looks at the duck in 3/4, so a world displacement d moves the
+    duck on screen by (d . right) * ppm, with right = (rx, ry, 0) the camera's
+    horizontal axis. The duck walks along world x, so the usable x range is the
+    screen band divided by ppm * rx.
+    """
+
+    def __init__(
+        self,
+        band: GroundBand,
+        size_px: int,
+        h_m: float = H_M,
+        right: tuple[float, float] = (1.0, 0.0),
+    ):
         self.band = band
         self.S = size_px
-        self.ppm = size_px / 1.6 / H_M  # S = 1.6 * H; H = duck height in px
-        self.x_min = (band.left + size_px / 2 + EDGE_PAD_PX - band.center) / self.ppm
-        self.x_max = (band.right - size_px / 2 - EDGE_PAD_PX - band.center) / self.ppm
+        self.h_m = h_m
+        self.rx, self.ry = right
+        if self.rx <= 0.1:
+            raise ValueError("camera right axis must have a clear +x component")
+        self.ppm = size_px / 1.6 / h_m  # S = 1.6 * H; H = duck height in px
+        k = self.ppm * self.rx
+        self.x_min = (band.left + size_px / 2 + EDGE_PAD_PX - band.center) / k
+        self.x_max = (band.right - size_px / 2 - EDGE_PAD_PX - band.center) / k
 
-    def screen_x(self, x_m: float) -> float:
-        """Logical screen x of the window center for world x."""
-        return self.band.center + x_m * self.ppm
+    def screen_x(self, x_m: float, y_m: float = 0.0) -> float:
+        """Logical screen x of the window center for a world ground point."""
+        return self.band.center + (x_m * self.rx + y_m * self.ry) * self.ppm
 
-    def world_x(self, screen_x_px: float) -> float:
-        return (screen_x_px - self.band.center) / self.ppm
+    def world_x(self, screen_x_px: float, y_m: float = 0.0) -> float:
+        return ((screen_x_px - self.band.center) / self.ppm - y_m * self.ry) / self.rx
 
     def clamp_x(self, x_m: float) -> float:
         return min(max(x_m, self.x_min), self.x_max)

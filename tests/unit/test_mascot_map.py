@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from duckdesk.platform.mascot_map import Dpi, MascotMapping, compute_band
+from duckdesk.platform.mascot_map import H_M, Dpi, MascotMapping, compute_band
 
 pytestmark = pytest.mark.unit
 
@@ -59,7 +59,7 @@ def test_ppm_constant_across_scale(dpr):
     """ppm = H/H_m -> same logical px-per-meter at any scale."""
     band = compute_band(_taskbar_bottom(dpr), _work_area(dpr, TB_H / dpr), Dpi(dpr), False)
     mm = MascotMapping(band, 120)
-    assert mm.ppm == pytest.approx(120 / 1.6 / 0.1155)
+    assert mm.ppm == pytest.approx(120 / 1.6 / H_M)
     # window top: floor_y - S + margin
     m = round(0.04 * 120)
     assert mm.window_top() == pytest.approx(band.floor_y - 120 + m)
@@ -91,3 +91,22 @@ def test_side_taskbar_degrades():
 def test_no_taskbar_degrades():
     band = compute_band(None, _work_area(1.0), Dpi(1.0), False)
     assert band.hidden
+
+
+@pytest.mark.parametrize("dpr", (1.0, 1.25, 1.5))
+def test_three_quarter_camera_projection(dpr):
+    """ADR-0007: with a 3/4 camera the duck moves rx*ppm px per world meter
+    along x, and the clamp range still lands the window inside the band."""
+    band = compute_band(_taskbar_bottom(dpr), _work_area(dpr, TB_H / dpr), Dpi(dpr), False)
+    rx, ry = 0.64, 0.77
+    mm = MascotMapping(band, 120, h_m=0.26, right=(rx, ry))
+    assert mm.screen_x(1.0) - mm.screen_x(0.0) == pytest.approx(rx * mm.ppm)
+    assert mm.screen_x(mm.x_max) == pytest.approx(band.right - 60 - 8)
+    assert mm.world_x(mm.screen_x(0.3, 0.02), 0.02) == pytest.approx(0.3)
+
+
+def test_head_fits_in_window():
+    """Regression for the cut-off head: the view must be 1.6x the duck height."""
+    band = compute_band(_taskbar_bottom(1.0), _work_area(1.0, TB_H), Dpi(1.0), False)
+    mm = MascotMapping(band, 120, h_m=0.26)
+    assert mm.ortho_height_m() == pytest.approx(1.6 * 0.26)
