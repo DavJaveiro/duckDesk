@@ -45,6 +45,7 @@ extend-exclude = ["vendor"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--strict-markers -ra"
 markers = [
     "unit: fast tests, no window, no upstream",
     "parity: numeric parity against vendor/microduck_rl (needs vendor/)",
