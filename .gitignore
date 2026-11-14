@@ -16,6 +16,8 @@ assets/policies/
 build/
 dist/
 installer/Output/
+installer/out/
+installer/licenca.txt
 
 # Local
 *.log
