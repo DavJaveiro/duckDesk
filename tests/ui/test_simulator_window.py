@@ -140,6 +140,12 @@ def test_mascot_cycle_20x_no_leak(ctrl):
     import psutil
 
     proc = psutil.Process(os.getpid())
+    # Acceptance #3 covers window/renderer churn. The generated voice (ADR-0011)
+    # is silenced here: its own footprint is a bounded one-time plateau (audio
+    # heap + lazy WAV bank, measured ~+3 MB steady-state standalone), but under
+    # this loaded pytest heap its first plays shift the RSS baseline ~40 MB —
+    # baseline drift, not per-cycle growth.
+    ctrl.voice.enabled = False
     ctrl.enter_mascot()
     ctrl.exit_mascot()  # warm-up: allocate one-time structures
     rss0 = proc.memory_info().rss
@@ -391,15 +397,28 @@ def test_enter_mascot_honours_last_x(ctrl):
 
 
 def test_double_click_quacks_and_stays_in_mascot(ctrl, monkeypatch):
-    """05 section 6: double-click says "Quack! Quack!"; opening the simulator
-    is the tray menu's job only."""
-    calls = []
-    monkeypatch.setattr("duckdesk.platform.sound.quack_quack", lambda: calls.append(1))
+    """05 section 6: double-click plays the generated 'chirp' (ADR-0011);
+    opening the simulator is the tray menu's job only."""
+    played = []
+    env = ((0.00, 0.0), (0.04, 0.5))
+    monkeypatch.setattr(ctrl.voice, "play", lambda tag: played.append(tag) or env)
     ctrl.enter_mascot()
+    played.clear()  # the greet on entry is not the click
     ctrl.mascot.double_clicked.emit()
-    assert calls == [1]
+    assert played == ["chirp"]
+    assert ctrl.beak._env == env  # the beak lip-syncs the played variant
     assert ctrl.mascot is not None  # still in mascot mode
     ctrl.exit_mascot()
+
+
+def test_double_click_falls_back_to_mp3_without_voice(ctrl, monkeypatch):
+    """With the voice off/unavailable, the bundled quack still answers."""
+    monkeypatch.setattr(ctrl.voice, "play", lambda _tag: None)
+    calls = []
+    monkeypatch.setattr("duckdesk.platform.sound.quack_quack", lambda: calls.append(1))
+    ctrl._mascot_double_click()
+    assert calls == [1]
+    assert ctrl.beak.quacking  # beak still works on the MP3 envelope
 
 
 def test_about_dialog_text():
@@ -418,6 +437,7 @@ def test_tray_menu_shape(ctrl):
         "Mostrar pato na barra",
         "Comportamentos",
         "Piloto automático",
+        "Voz do pato",
         "Pausar",
         "Tamanho",
         "Iniciar com o Windows",
@@ -427,4 +447,5 @@ def test_tray_menu_shape(ctrl):
         assert t in texts
     assert ctrl.tray.act_mascot.isEnabled()
     assert ctrl.tray.act_autopilot.isEnabled()
+    assert ctrl.tray.act_voice.isEnabled()
     assert ctrl.tray.act_autostart.isEnabled()

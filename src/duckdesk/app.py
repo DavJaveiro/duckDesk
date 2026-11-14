@@ -8,6 +8,7 @@ rendering never blocks physics and never runs more often than needed.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import signal
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 from PySide6.QtCore import QByteArray, QObject, QPoint, Qt, QTimer
+from PySide6.QtGui import QCursor
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -151,6 +153,10 @@ class AppController(QObject):
         self._duck_h_m: float | None = None  # measured on first mascot entry (ADR-0007)
         self.autopilot = None
         self.beak = BeakAnimator()  # mouth servo animation (ADR-0010)
+        from duckdesk.platform.voice import Voice
+
+        self.voice = Voice(self.settings)  # generated voice (ADR-0011)
+        self._bye = False
         self._rng = np.random.default_rng()
         self._vel_hist: deque = deque(maxlen=int(1.0 / CONTROL_DT))
         self._frame_times: deque = deque(maxlen=120)
@@ -273,6 +279,13 @@ class AppController(QObject):
         ok, msg = self.mgr.request(req, self.sim)
         if not ok:
             self.window.flash(msg)
+        elif req is Request.PECK:
+            self._vocalise(self.voice.play("peck"))  # robotd: pecking -> 'peck'
+
+    def _vocalise(self, env) -> None:
+        """Drive the beak with a played sound's envelope (lip-sync, ADR-0010)."""
+        if env:
+            self.beak.vocalise(env)
 
     def on_toggle_sit(self) -> None:
         self.on_request(Request.STAND if self.mgr.seated else Request.SIT)
@@ -402,6 +415,22 @@ class AppController(QObject):
         else:
             self.on_autopilot_toggled(on)
 
+    def on_voice_toggled(self, on: bool) -> None:
+        """Tray 'Voz do pato' (ADR-0011): flips the facade live — off cuts any
+        held sound, on just re-arms the next play."""
+        self.settings["voice"] = on
+        self.voice.enabled = on and self.voice._bank is not None
+        if not on:
+            self.voice.wheee_end()  # a held ride lands immediately
+            self.voice.theremin_stop()
+            from duckdesk.platform.voice import winsound
+
+            if winsound is not None:
+                try:
+                    winsound.PlaySound(None, 0)  # stop, not purge: leave the OS be
+                except OSError:
+                    pass
+
     def on_size_changed(self, scale: float) -> None:
         self.settings["mascot_scale"] = scale
         if self.mascot is not None:
@@ -426,9 +455,11 @@ class AppController(QObject):
 
     def on_quit(self) -> None:
         self._close_duck_wheel()
-        from duckdesk.platform import sound
-
-        sound.close()  # release the MCI quack alias
+        delay_ms = 0
+        if not self._bye:
+            self._bye = True  # robotd: 'peck' says goodbye before shutdown
+            if self.voice.play("peck") is not None:
+                delay_ms = 350  # let the goodbye play out
         self.timer.stop()
         if self.mascot is not None:
             self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
@@ -436,6 +467,14 @@ class AppController(QObject):
         else:
             self.settings["last_mode"] = "simulator"
         self._save_geometry()
+        QTimer.singleShot(delay_ms, self._finish_quit)
+
+    def _finish_quit(self) -> None:
+        """Audio teardown, then quit — runs after the goodbye peck's head start."""
+        from duckdesk.platform import sound
+
+        sound.close()  # release the MCI quack alias
+        self.voice.close()  # winsound purge + waveOut
         self.app.quit()
 
     # --- mascot mode (docs/05) ---------------------------------------------------
@@ -504,6 +543,7 @@ class AppController(QObject):
             x_range=(mm.x_min, mm.x_max),
             enabled=bool(self.settings["autopilot"]),
             beak=self.beak,
+            voice=self.voice,  # alarm on falls, coo on yawns, inquire on glances
         )
         screen = self.window.screen()
         # 05 section 9: the renderer draws at 2x this and box-filters down
@@ -520,6 +560,7 @@ class AppController(QObject):
         if self._tray_active:
             self.tray.act_mascot.setText("Esconder pato")
         log.info("modo mascote: S=%dpx, faixa x=[%.2f, %.2f] m", mm.S, mm.x_min, mm.x_max)
+        self._vocalise(self.voice.play("greet"))  # robotd: 'greet' at wake-up
 
     def _place_yaw(self, yaw: float) -> None:
         jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
@@ -531,6 +572,8 @@ class AppController(QObject):
         """05 section 8: no reset — the duck continues where it is."""
         self._close_duck_wheel()
         self._clear_push()
+        self.voice.wheee_end()  # a ride in progress lands
+        self.voice.theremin_stop()
         self.beak.stop()
         self.sim.set_beak(0.0)  # mouth shut again in the simulator
         self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
@@ -619,9 +662,25 @@ class AppController(QObject):
         if self._radial_menu is not None:
             self._radial_menu.hide()  # == close(): WA_DeleteOnClose is not set
 
+    def _theremin_closeness(self) -> float | None:
+        """Cursor proximity -> 0..1 for the streamed voice (ADR-0011).
+
+        The note swells inside ~2 duck-widths and fades outside — the
+        upstream theremin's hand distance, re-read for a desktop cursor."""
+        if self.mascot is None or self._dragging_duck or self._fullscreen_hidden:
+            return None
+        p = QCursor.pos()
+        c = self.mascot.geometry().center()
+        d = math.hypot(p.x() - c.x(), p.y() - c.y())
+        radius = 2.0 * self.mascot.width()
+        return max(0.0, min(1.0, 1.0 - d / radius)) or None
+
     def _tick_mascot(self, now: float) -> None:
         n = self.clock.steps_due(now - self._last)
         self._last = now
+        # The theremin pumps before the pause gate so its fades keep flowing
+        # during drags/fullscreen-hide (level slews; silence arrives softly).
+        self.voice.theremin_tick(self._theremin_closeness(), self.beak.mouth)
         if self._dragging_duck or self._fullscreen_hidden:
             return  # paused while dragged or a fullscreen app holds the screen
         for _ in range(n):
@@ -703,11 +762,16 @@ class AppController(QObject):
         self.mascot.set_frame(frame)
 
     def _mascot_double_click(self) -> None:
-        """The bundled "Quack! Quack!" plus the beak working (05 §6, ADR-0010)."""
-        from duckdesk.platform.sound import quack_quack
+        """Double click: the generated 'chirp' — this install's own voice
+        (05 §6, ADR-0011); the bundled MP3 is the silent-PC fallback."""
+        env = self.voice.play("chirp")
+        if env:
+            self.beak.vocalise(env)
+        else:
+            from duckdesk.platform.sound import quack_quack
 
-        quack_quack()
-        self.beak.quack()
+            quack_quack()
+            self.beak.quack()
 
     def _mascot_click(self, _pos) -> None:
         if self.autopilot is None:
@@ -723,9 +787,11 @@ class AppController(QObject):
         else:  # look toward the cursor for 2 s (05 section 6)
             side = 1.0 if _pos.x() > self.mascot.width() / 2 else -1.0
             self._head[2] = 0.6 * side  # head_yaw
+            self._vocalise(self.voice.play("inquire"))  # curious -> 'inquire'
 
     def _mascot_drag_start(self) -> None:
         self._dragging_duck = True
+        self.voice.wheee_start()  # the held-ride loop (robotd 'wheee')
         if self.autopilot is not None:
             self.autopilot.poke()
 
@@ -742,6 +808,7 @@ class AppController(QObject):
     def _mascot_drag_finish(self, pos) -> None:
         self._dragging_duck = False
         self._drag_lift = 0
+        self.voice.wheee_end()  # cut the loop, play the landing
         x = self.mascot_map.clamp_x(self.mascot_map.world_x(pos.x()))
         yaw = self.sim.trunk_yaw()  # land facing the same way (05 section 6)
         self.mgr.request(Request.RESET, self.sim)

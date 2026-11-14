@@ -121,8 +121,8 @@ vx      = 0 if |err| > 0.4 else v_walk * vx_sign     # primeiro vira, depois and
 | Gesto | Efeito |
 |---|---|
 | Clique sobre o pato | Reação sorteada: bicar 40 %, sentar/levantar 30 %, cambalhota 15 % (mesmas condições do `ROLL`), olhar para o cursor 15 % (head_yaw para o lado do cursor por 2 s) |
-| Duplo clique | "Quack! Quack!" — toca o `assets/sounds/quack.mp3` empacotado, via MCI do Windows (`platform/sound.py`), e o bico trabalha no ritmo do som (lip-sync da envolvente do arquivo, ADR-0010) com um leve sacode de cabeça; abrir o simulador é só pela bandeja ou pela roda (§7/§11) |
-| Arrastar (botão esquerdo, > 6 px) | "Pega" o pato: a simulação pausa e a janela segue o cursor na horizontal (e até 200 px para cima, só visual). Ao soltar: reset em pé no x solto (limitado à faixa), com o mesmo sentido em que estava |
+| Duplo clique | Toca o **`chirp` gerado** — a vocalização sintetizada da instalação (`platform/voice/`, ADR-0011), e o bico trabalha no ritmo do som (lip-sync da envolvente da variante tocada, ADR-0010) com um leve sacode de cabeça; sem voz, cai no `quack.mp3` empacotado via MCI (`platform/sound.py`). Abrir o simulador é só pela bandeja ou pela roda (§7/§11) |
+| Arrastar (botão esquerdo, > 6 px) | "Pega" o pato: a simulação pausa e a janela segue o cursor na horizontal (e até 200 px para cima, só visual). O arrasto toca o **wheee** (loop enquanto segura, aterrissagem ao soltar, ADR-0011). Ao soltar: reset em pé no x solto (limitado à faixa), com o mesmo sentido em que estava |
 | Botão direito sobre o pato | Abre a roda de ações do pato, acima da cabeça (§11) |
 
 "Sobre o pato" = pixel com alfa > 0 na última imagem renderizada.
@@ -144,6 +144,33 @@ ficam intactas. As fontes do upstream que o mascote reproduz:
   bocejo a cada ~90 s: 3 s de abertura até `yawn_open = 0,6` (abre devagar, sustenta, fecha
   mais rápido) com a cabeça tombando `yawn_pitch = -0,15 rad`.
 
+### A voz (`platform/voice/`, ADR-0011)
+
+O pato **fala**: em vez de um MP3 fixo, o DuckDesk sintetiza a voz em tempo real, como o
+daemon `sounds/` do projeto original — uma semente única por instalação
+(`settings["voice_seed"]`, sorteada no primeiro boot) deriva uma personalidade vocal
+(tom, nasalidade, vibrato, quackiness, tempo), e cada evento toca uma "tag" sintetizada
+com variantes, para não soar como gravação:
+
+| Evento | Tag | Onde |
+|---|---|---|
+| entrar no modo mascote | `greet` | o pato "acorda" falando |
+| duplo clique | `chirp` | o "Quack!" — variante sorteada a cada vez |
+| bicar (roda/bandeja/clique) | `peck` | e também como "tchau" antes do Sair/Ctrl+C |
+| bocejo (quietude ~45 s) | `coo` | soninho |
+| olhadas do IDLE e olhar-por-clique | `inquire` | moeda ~15 % por olhada |
+| queda (RECOVER) | `alarm` | |
+| arrasto | `wheee` | loop enquanto segura + aterrissagem ao soltar |
+
+Além das vocalizações há o **theremin**: aproximar o cursor do pato (menos de ~2
+larguras) ergue uma nota contínua cujo tom varre o alcance vocal dele — o análogo, com
+cursor, do theremin por distância da mão do robô real (`stream.rs`, via `waveOut`).
+
+Tudo local e offline: os WAVs são renderizados uma vez por instalação no banco
+`%APPDATA%/DuckDesk/voice/` (regenerado se a semente ou a versão do sintetizador mudar)
+e o bico acompanha a envolvente do som tocado. **"Voz do pato"** na bandeja desliga ao
+vivo (`settings["voice"] = false`); `DUCK_IDENTITY` fixa a identidade em depuração.
+
 ## 7. Menu da bandeja
 
 O menu abaixo é o **QMenu nativo do ícone da bandeja** e não muda: ele é aberto pelo próprio
@@ -154,6 +181,7 @@ botão direito sobre o **pato** abre a roda de ações (§11), não este menu.
 - **Mostrar pato na barra** / **Esconder pato** (alterna)
 - **Comportamentos** ▸ Sentar/Levantar · Bicar o chão · Cambalhota
 - **Piloto automático** (marcável, ligado por padrão)
+- **Voz do pato** (marcável, ligada por padrão): voz gerada por semente (§6, ADR-0011)
 - **Pausar**
 - **Tamanho** ▸ Pequeno · Médio · Grande
 - **Iniciar com o Windows** (marcável): escreve ou apaga

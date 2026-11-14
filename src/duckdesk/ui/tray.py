@@ -49,6 +49,11 @@ class Tray(QSystemTrayIcon):
         self.act_autopilot.setChecked(bool(self.ctrl.settings["autopilot"]))
         self.act_autopilot.toggled.connect(self.ctrl.on_autopilot_toggled)
 
+        self.act_voice = menu.addAction("Voz do pato")
+        self.act_voice.setCheckable(True)
+        self.act_voice.setChecked(bool(self.ctrl.settings["voice"]))
+        self.act_voice.toggled.connect(self.ctrl.on_voice_toggled)
+
         act_pause = menu.addAction("Pausar")
         act_pause.triggered.connect(self.ctrl.on_toggle_pause)
 

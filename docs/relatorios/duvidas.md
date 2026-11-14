@@ -80,3 +80,21 @@ Itens que **não** estavam nesta lista e foram corrigidos na revisão:
   Repro de tela real: `scripts/probe_wheel_death.py`; regressão offscreen:
   `test_wheel_open_simulator_sector_leaves_a_healthy_app` (clique real via QTest +
   `appmod.__dict__` íntegro).
+- **Voz gerada por semente (pedido do dono, branch `feat-voice`):** porte do daemon
+  `sounds/` upstream em `platform/voice/` (ADR-0011). Desvios conscientes em relação ao
+  Rust original:
+  - **f64 em vez de f32:** o Rust sinaliza em `f32`; o porte calcula em `f64` e converte
+    no fim. Bit-paridade já era impossível (libm difere), e o contrato real — "mesma
+    semente, mesma voz para sempre" — está pinado em `tests/unit/test_voice.py`.
+  - **`wheee` sem segmento `start`:** `winsound` não encadeia "toca isto, depois faz loop
+    naquilo". O arrasto entra direto no loop (que já carrega a subida via crossfade na
+    emenda) e aterrissa com o segmento `end`. Curto arrasto sai "ui!" em vez de "uêê~".
+  - **Coro (`chorale/`) fora de escopo:** depende de partitura e de vários patos.
+  - **Theremin por cursor:** sem câmera/mão no desktop, a distância do cursor ao pato é
+    o análogo da distância da mão (`hz_at` do `stream.rs`, streaming via `waveOut`
+    ctypes — `PySide6.QtMultimedia` não existe no venv).
+  - **Semente:** `settings["voice_seed"]` sorteada no 1.º boot substitui o serial do SoC;
+    `DUCK_IDENTITY` continua como override de desenvolvimento (lib.rs `seed_from_id`).
+  - **`wheee_end` ocioso:** antes, sair do mascote renderizava o banco do passeio
+    inteiro (~30 MB transientes) para tocar uma aterrissagem sem passeio — agora é no-op
+    sem `wheee_start` anterior.

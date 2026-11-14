@@ -38,6 +38,17 @@ Arquivos `.onnx` e `manifest.json` em `assets/policies/v10/`, do repositório
 Copyright Pollen Robotics. Licenciado sob a Apache License 2.0 —
 [licenses/Apache-2.0.txt](licenses/Apache-2.0.txt).
 
+### Síntese de voz portada — Apache-2.0
+
+`src/duckdesk/platform/voice/` deriva do daemon `sounds/` do repositório
+`pollen-robotics/microduck` (RNG xoshiro256++/splitmix64, DSP a 48 kHz, personalidade
+por semente, receitas de vocalização e o streaming do theremin), cada arquivo com
+cabeçalho indicando a fonte original. O sintetizador original, por sua vez, é um porte
+de `apirrone/microduck_sounds`.
+
+Copyright Pollen Robotics. Licenciado sob a Apache License 2.0 —
+[licenses/Apache-2.0.txt](licenses/Apache-2.0.txt).
+
 ### Lógica de inferência portada — Apache-2.0
 
 Partes de `src/duckdesk/` derivam de `scripts/infer_policy.py` do repositório
@@ -81,8 +92,9 @@ Copyright NumPy Developers. Licenciado sob a BSD 3-Clause License —
 
 ### Som de grasno — fornecido pelo dono do projeto
 
-Arquivo `assets/sounds/quack.mp3` (duplo clique no mascote, 05 §6), fornecido pelo dono do
-projeto. **Atribuição/licença a confirmar** — ver `docs/relatorios/duvidas.md`.
+Arquivo `assets/sounds/quack.mp3` (som de reserva quando a voz gerada está desligada,
+05 §6, ADR-0011), fornecido pelo dono do projeto. **Atribuição/licença a confirmar** —
+ver `docs/relatorios/duvidas.md`.
 
 ## Marcas
 

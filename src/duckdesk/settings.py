@@ -21,6 +21,8 @@ _DEFAULT = {
     "autopilot": True,
     "speed": 1.0,
     "autostart": False,
+    "voice": True,  # generated voice (platform/voice); off = silent duck
+    "voice_seed": None,  # this install's vocal identity; drawn on first boot
 }
 
 

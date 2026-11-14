@@ -138,14 +138,21 @@ class BeakAnimator:
         self.mouth = 0.0
         self.head = 0.0  # head_pitch offset; <0 tips the beak up
         self._quack_t: float | None = None
+        self._env = QUACK_ENV  # envelope the quack timeline plays
         self._yawn_t: float | None = None
         self._glance = 0.0
 
     # --- triggers ------------------------------------------------------------
 
+    def vocalise(self, frames: tuple[tuple[float, float], ...]) -> None:
+        """(Re)start the beak timeline on any sound's envelope — generated
+        voice calls drive the mouth exactly like the recording does."""
+        self._env = frames
+        self._quack_t = 0.0
+
     def quack(self) -> None:
         """(Re)start the bundled-quack lip-sync and head toss."""
-        self._quack_t = 0.0
+        self.vocalise(QUACK_ENV)
 
     def yawn(self) -> None:
         """Start a yawn unless one is already playing."""
@@ -177,9 +184,9 @@ class BeakAnimator:
     def update(self, dt: float) -> None:
         q = 0.0
         if self._quack_t is not None:
-            q = _env_at(QUACK_ENV, self._quack_t)
+            q = _env_at(self._env, self._quack_t)
             self._quack_t += dt
-            if self._quack_t >= QUACK_ENV[-1][0]:
+            if self._quack_t >= self._env[-1][0]:
                 self._quack_t = None
         y = 0.0
         if self._yawn_t is not None:

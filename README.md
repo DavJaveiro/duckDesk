@@ -25,10 +25,18 @@ Dois modos no mesmo app:
 
 Do simulador, o menu **Modo → Enviar para a barra de tarefas** leva o pato para o modo mascote.
 Pelo ícone na bandeja do sistema (ou "Abrir simulador" na roda de ações), ele volta para o
-simulador; o duplo clique no pato o faz grasnar ("Quack! Quack!").
+simulador; o duplo clique no pato o faz grasnar — e o grasno é a **voz gerada da sua
+instalação** (`chirp`, como no pato real: cada instalação tem uma voz só sua, derivada de
+uma semente; veja ADR-0011).
 Com o pato na barra, o **botão direito sobre ele** abre uma roda de ações (bicar, sentar,
 cambalhota, empurrar, pausar, piloto automático, voltar ao simulador e sair); o menu completo
 continua no ícone da bandeja, inclusive na área de ícones ocultos.
+
+A voz cobre os outros momentos também: o pato cumprimenta ao acordar (`greet`), bicar toca
+`peck` (que também é o "tchau" ao sair), bocejo toca `coo`, olhadas curiosas tocam
+`inquire`, queda toca `alarm`, e segurá-lo faz "uêê" (`wheee`). Aproxime o cursor dele e
+uma nota contínua acompanha a distância — um pequeno theremin. **"Voz do pato"** na
+bandeja liga/desliga ao vivo.
 
 > **Projeto não oficial.** Não tem vínculo com a Pollen Robotics nem com a Hugging Face. Usa o
 > software aberto deles nos termos das licenças: veja [docs/07-licencas.md](docs/07-licencas.md).

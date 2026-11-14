@@ -74,11 +74,13 @@ class Autopilot:
         x_range: tuple[float, float] = (-2.5, 2.5),
         enabled: bool = True,
         beak: BeakAnimator | None = None,
+        voice=None,
     ):
         self.rng = rng
         self.x_min, self.x_max = x_range
         self.enabled = enabled
         self.beak = beak
+        self.voice = voice  # platform.voice.Voice; None = silent
 
         self.state = AutoState.IDLE
         self.state_s = 0.0  # time in current state (for the 60 s check)
@@ -182,9 +184,12 @@ class Autopilot:
         self.state_s += dt
         self.time_in_state[self.state.value] += dt
 
-        # Fallen duck preempts everything (docs/05 RECOVER).
+        # Fallen duck preempts everything (docs/05 RECOVER). robotd maps the
+        # fall to the 'alarm' voice tag.
         if self.state is not AutoState.RECOVER and tilt > FALL_TILT_RAD:
             self.falls += 1
+            if self.voice is not None:
+                self.voice.play("alarm")
             self._goto(AutoState.RECOVER)
             self._upright_s = 0.0
 
@@ -201,6 +206,8 @@ class Autopilot:
                 and self.rng.random() < dt / YAWN_EVERY_S
             ):
                 self.beak.yawn()
+                if self.voice is not None:  # robotd: sleepy -> 'coo'
+                    self.voice.play("coo")
             # The glance's beak follows the look in progress (idle_head.rs);
             # outside IDLE there is no glance to open it.
             g = 0.0
@@ -251,6 +258,10 @@ class Autopilot:
                     # (glance_mouth * rng(0.5, 1)); the opening follows the
                     # glance's progress, so it closes when the look ends.
                     self._look_beak = GLANCE_MOUTH * float(self.rng.uniform(*GLANCE_BEAK))
+                    # robotd: curious -> 'inquire'; ~1 in 6 glances so it
+                    # stays an occasional question, not a metronome.
+                    if self.voice is not None and self.rng.random() < 0.15:
+                        self.voice.play("inquire")
                 step = LOOK_RAMP * dt
                 self._look_now += np.clip(self._look_target - self._look_now, -step, step)
                 cmd.head = np.array(
