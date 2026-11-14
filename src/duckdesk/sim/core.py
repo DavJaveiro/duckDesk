@@ -252,6 +252,13 @@ class SimCore:
         z_world_z = 1.0 - 2.0 * (qx * qx + qy * qy)
         return math.acos(max(-1.0, min(1.0, z_world_z)))
 
+    def trunk_yaw(self) -> float:
+        """World yaw of the trunk x-axis, in radians (-pi, pi]."""
+        qw, qx, qy, qz = self.trunk_quat()
+        siny = 2.0 * (qw * qz + qx * qy)
+        cosy = 1.0 - 2.0 * (qy * qy + qz * qz)
+        return math.atan2(siny, cosy)
+
     def body_velocity(self) -> tuple[np.ndarray, float]:
         """Body-frame linear velocity and yaw rate (upstream L1698-1706)."""
         quat = self.trunk_quat().astype(np.float32)
