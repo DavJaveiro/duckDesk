@@ -12,7 +12,20 @@ from duckdesk.render.offscreen import OffscreenRenderer
 from duckdesk.settings import Settings
 from duckdesk.sim.core import SimCore
 
-pytestmark = pytest.mark.unit
+
+def _gl_available() -> bool:
+    try:
+        r = mujoco.Renderer(mujoco.MjModel.from_xml_string("<mujoco/>"), 64, 64)
+        r.close()
+        return True
+    except Exception:  # noqa: BLE001 - headless CI hosts lack a GL context
+        return False
+
+
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.skipif(not _gl_available(), reason="no usable GL context"),
+]
 
 SCENE = assets.assets_dir() / "upstream" / "microduck_rl" / "robot" / "microduck" / "scene_ball.xml"
 

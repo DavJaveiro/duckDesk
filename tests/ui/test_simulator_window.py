@@ -20,7 +20,22 @@ from duckdesk import assets
 from duckdesk.app import AppController
 from duckdesk.brain.commands import Request
 
-pytestmark = pytest.mark.unit
+
+def _gl_available() -> bool:
+    import mujoco
+
+    try:
+        r = mujoco.Renderer(mujoco.MjModel.from_xml_string("<mujoco/>"), 64, 64)
+        r.close()
+        return True
+    except Exception:  # noqa: BLE001 - headless CI hosts lack a GL context
+        return False
+
+
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.skipif(not _gl_available(), reason="no usable GL context"),
+]
 
 VELSTAND = assets.assets_dir() / "policies" / "v10" / "velstand.onnx"
 
