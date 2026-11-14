@@ -62,7 +62,7 @@ E um botão "Ver avisos completos" que abre o `THIRD_PARTY_NOTICES.md`.
 | `pollen-robotics/microduck_rl` | commit `0daab160d3fb1c2cbaba16a4a19052f36709dd9e` (branch `develop`, 2026-11-10) |
 | `pollen-robotics/microduck` | commit `094d4bb4af31ec181156e1ea772437fdd7a55978` (2026-11-13), **só referência** (`robotd/src/control.rs`, docs) |
 | `pollen-robotics/microduck-policies` | tag **`v10`** (a mesma fixada em `[workspace.metadata.policies]` no `Cargo.toml` do `microduck`) |
-| `Rhoban/bam` | commit `57d13ead53206a6bf0db3d66f86506ae8c2ce01a` (branch `mjlab_frictionloss`) |
+| `Rhoban/bam` | commit `62bd8ce12154340be97e06f7f41a0ca8f116d967` (branch `mjlab_frictionloss`; o mesmo do `uv.lock` do `microduck_rl`) |
 
 `scripts/fetch_assets.py` baixa exatamente esses commits e essa tag, copia os arquivos para
 `assets/` e escreve `assets/lock.json` com o SHA-256 de cada arquivo. Com `--verify`, só confere

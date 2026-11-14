@@ -38,7 +38,7 @@ XML (`--no-bam` no upstream) **não** é o que a rede viu no treino. Porte exata
 - No reset: `bam_ctrl.reset(data.qpos)` (L1385).
 
 Pacote: `better-actuator-models` (importado como `bam`), do Git
-`https://github.com/Rhoban/bam.git` no commit `57d13ead53206a6bf0db3d66f86506ae8c2ce01a` (branch
+`https://github.com/Rhoban/bam.git` no commit `62bd8ce12154340be97e06f7f41a0ca8f116d967` (branch
 `mjlab_frictionloss`), com o extra `[mujoco]`. As dependências são só `numpy`, `colorama` e
 `mujoco`. **Não** instale o extra `[mjlab]`.
 
@@ -94,7 +94,9 @@ atuadores (`model.actuator_trnid`), como em L390–395. Nunca fixe os índices n
 - `action_scale = 1.0` para todas as políticas da v1 (o manifesto só define outro valor para as
   de patins, que estão fora do escopo). Leia `action_scale` do manifesto mesmo assim.
 - **Sem filtro** de suavização. As políticas foram treinadas sem filtro (AGENTS.md do upstream).
-- Sem atraso artificial (`delay` desligado), que é o padrão do upstream.
+- Sem atraso artificial (`delay_lag = 0`), que é o padrão do upstream. A ADR-0006 mostra a
+  medição: atrasos maiores andam um pouco mais rápido, mas o pato volta a cair depois de se
+  levantar.
 
 ## 6. Laço de controle (uma iteração a 50 Hz)
 

@@ -53,7 +53,7 @@ O dono do projeto, num PC com Windows 11 x64. Quer:
 | Requisito | Meta (medida no relatório do marco) |
 |---|---|
 | Física em tempo real | Controle a 50 Hz estáveis, sem acumular atraso, com o modo mascote ativo e o PC em uso normal |
-| CPU no modo mascote | ≤ 15 % de **um** núcleo em média (Task Manager ou `psutil`, 60 s de medição) |
+| CPU no modo mascote | ≤ 30 % de **um** núcleo em média, a 30 fps (`psutil`, 60 s de medição). Era 15 %, o que forçou 12–15 fps e deixou o pato travado (ADR-0007). |
 | CPU no modo simulador | Sem meta rígida; informe o valor |
 | Memória | ≤ 400 MB de RSS |
 | Tempo de abertura | ≤ 6 s até o pato aparecer (instalado, SSD) |

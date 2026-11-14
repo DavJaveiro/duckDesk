@@ -35,7 +35,8 @@
 | `brain/autopilot.py` — `Autopilot` | Máquina de estados do mascote (05 §5). Recebe o estado do pato e a faixa de x permitida e devolve comando e pedidos. Sem Qt. | numpy |
 | `brain/keyboard.py` | Mapeia teclas para `DuckCommand` e `Request` (04 §3). Sem Qt: recebe códigos de tecla abstratos. | — |
 | `render/offscreen.py` | Envolve `mujoco.Renderer`: renderização RGB e de segmentação, máscara do pato, superamostragem 2× e saída em array RGBA pré-multiplicado | mujoco |
-| `render/camera.py` | Câmera orbital livre, câmera que segue o pato e câmera ortográfica lateral do mascote | mujoco |
+| `render/camera.py` | Câmera orbital livre e câmera que segue o pato (simulador) | mujoco |
+| `render/mascot.py` | Câmera ortográfica 3/4 do mascote, altura do pato medida nas malhas, transparência pela profundidade (05 §9, ADR-0007) | mujoco |
 | `ui/simulator_window.py` | `QMainWindow` com menus, viewport, HUD e barra de status (04) | PySide6 |
 | `ui/mascot_window.py` | Janela transparente, sem borda, sempre no topo, sem botão na barra de tarefas; arrastar e clicar (05) | PySide6 |
 | `ui/tray.py` | Ícone na bandeja e menu (04 §6, 05 §7) | PySide6 |
@@ -118,7 +119,7 @@ DuckDesk/
 | mujoco | 3.10.0 | a mesma do `uv.lock` do `microduck_rl` no commit fixado |
 | onnxruntime | 1.24.4 | idem |
 | numpy | 2.4.1 | idem |
-| better-actuator-models | git `57d13ea…` com o extra `[mujoco]` | o mesmo branch que o upstream usa |
+| better-actuator-models | git `62bd8ce…` com o extra `[mujoco]` | o mesmo commit do `uv.lock` do `microduck_rl` (ADR-0006) |
 | PySide6-Essentials | a 6.x mais recente com wheel para cp312 win_amd64, fixada em `uv.lock` | Qt sem os módulos pesados (WebEngine etc.) |
 | pyinstaller | a mais recente estável, fixada em `uv.lock` | — |
 | pytest, ruff | grupo `dev` | — |
@@ -135,3 +136,5 @@ resolvedor não mudou `mujoco`, `onnxruntime` ou `numpy`.
 | [0003](adr/0003-thread-unica.md) | Física, rede e interface na thread do Qt, com passo fixo |
 | [0004](adr/0004-render-offscreen.md) | Renderização offscreen do MuJoCo → QImage, sem `QOpenGLWidget` |
 | [0005](adr/0005-janela-mascote-pequena.md) | Janela do mascote pequena que acompanha o pato, em vez de uma faixa da largura da tela |
+| [0006](adr/0006-bam-atraso-velocidades.md) | BAM no commit do upstream, atraso zero e comando de caminhada de 0,3 m/s |
+| [0007](adr/0007-render-mascote.md) | Mascote com câmera ortográfica 3/4, altura medida nas malhas e transparência pela profundidade |

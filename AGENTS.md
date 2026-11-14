@@ -44,6 +44,13 @@ inventar uma solução. Desvios sem registro serão reprovados na revisão.
 
 - Um **branch por marco** (`m0-bootstrap`, `m1-headless-core`, ...) e um **PR por marco**, na
   ordem de [08](docs/08-plano-de-tarefas.md). Não junte marcos num PR só.
+- **Todo PR aponta para `main`.** Nunca abra um PR contra o branch de outro marco: na primeira
+  rodada, os PRs #13–#18 foram mesclados uns nos outros e a `main` ficou parada no M1. Comece
+  cada marco a partir da `main` atualizada.
+- **Não mescle sem revisão.** Abra o PR e espere a aprovação; dúvidas "aguardando revisão"
+  bloqueiam a mesclagem.
+- **Evidência visual é olhada inteira.** Um critério como "pés na borda" não vale se a mesma
+  imagem mostra o pato cortado: confira a imagem toda antes de marcar ✅.
 - Cada PR inclui `docs/relatorios/Mx.md` com:
   - o que foi feito, item por item, apontando o critério de aceite correspondente;
   - a saída do `uv run pytest` (resumida) e de cada script de verificação pedido;

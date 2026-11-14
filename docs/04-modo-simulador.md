@@ -33,10 +33,10 @@ numa janela. Não implemente o degrau.
 
 | Tecla | Efeito |
 |---|---|
-| `W` / `↑` | vx = +0.25 enquanto pressionada |
-| `S` / `↓` | vx = −0.20 |
-| `A` / `D` | wz = +1.0 / −1.0 (girar) |
-| `Q` / `E` | vy = +0.15 / −0.15 (passo lateral) |
+| `W` / `↑` | vx = +0.30 enquanto pressionada (abaixo de ~0,25 a velstand não anda, ADR-0006) |
+| `S` / `↓` | vx = −0.30 |
+| `A` / `D` | wz = +1.5 / −1.5 (girar; abaixo de ~1,0 a velstand parada não gira, ADR-0006) |
+| `Q` / `E` | vy = +0.20 / −0.20 (passo lateral) |
 | `Shift` + direção | Velocidade máxima da faixa (03 §8) |
 | `Y` | Sentar ↔ levantar |
 | `G` | Bicar o chão |

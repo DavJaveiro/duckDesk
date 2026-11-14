@@ -35,35 +35,36 @@ para o que está atrás.
   simulação. Volte quando acabar. Consulte a cada 1 s.
 - Tamanho: quadrado de lado `S = 1.6 × H`, onde `H` é a altura do pato em pé, em pixels lógicos:
   **Pequeno 80**, **Médio 120** (padrão), **Grande 180**. O 1.6 dá folga para a cambalhota e
-  para a cabeça.
+  para a cabeça. **Atenção:** 80/120/180 é a altura do **pato**, não da janela (Médio: S = 192).
 
 ## 3. Câmera e mapeamento sim ↔ tela
 
-- Câmera **ortográfica**, olhando na horizontal ao longo de **+y** do mundo (o pato visto de
-  lado, com +x do mundo para a direita na tela). Sem perspectiva, a altura do pato em pixels não
-  muda com a profundidade.
-- Pixels por metro: `ppm = H / H_m`, onde `H_m` é a altura medida do pato em pé no simulador
-  (do chão ao topo da cabeça, na pose padrão). Meça no M1 e registre o valor no relatório.
-  Deve dar cerca de 0,25 m.
-- Altura visível da câmera (o `fovy` em metros, para câmera ortográfica): `S / ppm`.
-- Vertical: o chão do mundo (`z = 0`) fica sempre na linha `S − m` da janela, com
-  `m = round(0.04 × S)` px de margem para a sola. A câmera **não** acompanha o z do pato.
-- Horizontal: o x do mundo é mapeado para a faixa útil da barra de tarefas:
+Revisado na ADR-0007, depois que a primeira versão cortou a cabeça do pato.
+
+- Câmera **ortográfica de verdade**: `mjvCamera` livre com `model.vis.global_.orthographic = 1`,
+  ligada só durante a renderização do mascote. Numa câmera ortográfica, o MuJoCo lê `fovy` como a
+  **altura visível em metros**, não como um ângulo. Passar graus produz quadros pretos.
+- **Vista 3/4**: azimute 140°, elevação −10°. Assim aparecem as duas pernas, a cabeça e o olho;
+  num perfil puro, uma perna esconde a outra. Com o pato olhando para +x, a câmera o vê de
+  frente-esquerda; ao virar, ele aparece de costas. Isso é 3D de verdade, não um sprite espelhado.
+- `H_m` = altura do pato em pé **como a câmera o vê**: do ponto do chão sob o tronco até o vértice
+  mais alto das malhas, medido ao longo do eixo "para cima" da câmera. É calculada em tempo de
+  execução a partir das malhas (`render.mascot.duck_screen_height_m`) e dá **0,270 m**. A altura
+  do tronco (0,1155 m) **não** serve.
+- Pixels por metro: `ppm = H / H_m`. Altura visível da câmera: `S / ppm = 1.6 × H_m`.
+- O pato anda ao longo do x do mundo. Na tela, um deslocamento `d` vira `(d · right) × ppm`,
+  com `right = (sin 140°, −cos 140°, 0) ≈ (0.64, 0.77, 0)`:
 
   ```
-  screen_x(x) = ground_center_px + x * ppm
-  x_min_m     = (ground_left_px  + S/2 + 8 - ground_center_px) / ppm
-  x_max_m     = (ground_right_px - S/2 - 8 - ground_center_px) / ppm
+  screen_x(x, y) = ground_center_px + (x * rx + y * ry) * ppm
+  x_min_m        = (ground_left_px  + S/2 + 8 - ground_center_px) / (ppm * rx)
+  x_max_m        = (ground_right_px - S/2 - 8 - ground_center_px) / (ppm * rx)
   ```
 
-- A janela é centrada no x do tronco (`trunk_base`), arredondado para pixel inteiro. O centro da
-  câmera é o x do mundo correspondente a esse centro, então o pato aparece centralizado sem
-  tremer. Mova a janela (`move`) só quando o x em pixels mudar.
-- Implementação sugerida: adicione via `MjSpec` uma câmera `mascot_cam` com
-  `orthographic=True` e atualize `model.cam_pos` a cada quadro. Também vale usar o
-  `mjvCamera` livre com `model.vis.global_.orthographic` ligado só durante a renderização do
-  mascote. O critério é o resultado: perfil, sem perspectiva, chão fixo e pixels por metro
-  constantes.
+- Enquadramento por quadro (sem tremer): a janela fica em pixel inteiro,
+  `left = round(screen_x − S/2)`. A câmera mira o ponto do chão sob o tronco, deslocado por
+  `right × (resto do arredondamento / ppm)` e por `up × ((S/2 − m) / ppm)`. O pato cai na posição
+  subpixel exata, e o chão sob ele fica sempre na linha `S − m` da janela.
 
 ## 4. Entrar no modo mascote
 
@@ -82,8 +83,8 @@ Máquina de estados determinística, com `numpy.random.Generator` injetado, test
 | Estado | O que faz | Sai para |
 |---|---|---|
 | `IDLE` | Comando zerado por 2–6 s. A cabeça "olha em volta": alvos aleatórios de head_yaw ∈ ±0.6 e head_pitch ∈ ±0.3 rad, trocando a cada 1–2 s, com rampa de 1 rad/s | sorteio: `WALK` 55 %, `SIT` 15 %, `PECK` 15 %, `IDLE` 10 %, `ROLL` 5 % |
-| `WALK` | Escolhe um alvo x a pelo menos 0,5 m de distância, dentro da faixa. Anda com vx ∈ [0.15, 0.25] (sorteado). Controle de rumo abaixo. | chegou (\|Δx\| < 0.05 m) → `IDLE` |
-| `TURN` | Gira no lugar até o rumo desejado: `wz = clip(2.0·erro, ±1.0)` | \|erro\| < 0.15 rad → volta ao estado anterior |
+| `WALK` | Escolhe um alvo x a pelo menos 0,5 m de distância, dentro da faixa. Anda com vx ∈ [0.28, 0.30] (sorteado; a velstand não sai do lugar abaixo de ~0,25, veja a ADR-0006). Controle de rumo abaixo. | chegou (\|Δx\| < 0.05 m) → `IDLE` |
+| `TURN` | Gira no lugar até o rumo desejado: `wz = ±1.5` (liga-desliga; abaixo de ~1,0 a velstand parada não gira, ADR-0006) | \|erro\| < 0.15 rad → volta ao estado anterior |
 | `SIT` | Pede `SIT`, fica sentado 5–20 s e pede `STAND` | fim da subida (03 §8) → `IDLE` |
 | `PECK` | Pede `PECK` | fim do episódio → `IDLE` |
 | `ROLL` | Pede `ROLL`, só se tiver ≥ 0,4 m livres à frente e a última cambalhota tiver sido há ≥ 3 min; senão vira `IDLE` | fim → `IDLE` |
@@ -145,22 +146,29 @@ Ao abrir o app, ele volta ao último modo usado. Na primeira execução, abre no
 
 ## 9. Renderização do mascote
 
-- `mujoco.Renderer(model, height=2S_px, width=2S_px)`, com `S_px` em pixels **físicos**
-  (`S × devicePixelRatio`).
-- Duas passadas por quadro: cor (RGB) e segmentação (`enable_segmentation_rendering()`, que
-  devolve id e tipo do objeto por pixel).
-- Máscara: o pixel é do pato se for uma geom cujo corpo pertence à árvore de `trunk_base`
-  (pré-calcule uma tabela booleana por id de geom com `model.geom_bodyid` e
-  `model.body_rootid`). Chão, bola e céu ficam com alfa 0.
-- Superamostragem: média de blocos 2×2 da cor pré-multiplicada e do alfa → bordas suaves. Saída
-  `S_px × S_px` em `Format_ARGB32_Premultiplied`; atenção à ordem BGRA na memória.
-- Até 30 fps. Pato parado (sentado ou `IDLE` sem movimento da cabeça): 15 fps.
-- Opcional (pode ficar para depois do M5): sombra elíptica suave sob os pés, desenhada pelo Qt,
-  com alfa 0.25.
+Revisado na ADR-0007.
+
+- `mujoco.Renderer` com `2·S_px × 2·S_px`, onde `S_px` é o tamanho da janela em pixels
+  **físicos**. O MSAA do GL fica desligado só nesse renderizador (`offsamples = 0` na criação):
+  a suavização das bordas vem da superamostragem 2×.
+- Só o pato é desenhado: `geomgroup` só com o grupo 2 (malhas visuais), porque o chão e a bola
+  estão no grupo 0. Sem céu, névoa, neblina, sombra nem reflexo.
+- A transparência sai do **buffer de profundidade do mesmo quadro**: pixel vazio = plano
+  distante. Uma passada de cor e uma leitura de profundidade da mesma cena, **em todo quadro**.
+  Não use máscara atrasada nem atualizada "a cada N quadros": é isso que deixava pedaços pretos
+  e cortes.
+- Filtro 2×2 em inteiros sobre as amostras cobertas, gerando BGRA pré-multiplicado. Só o
+  retângulo que contém o pato é processado.
+- **30 fps sempre**, inclusive parado. Abaixo disso o andar parece travado. No tick de 8 ms, o
+  limite efetivo é `1/30 − 4 ms`, senão o quadro cai em 40 ms (25 fps).
+- Custo medido: cerca de 2,4 ms por quadro com `S = 192` (Médio). O app inteiro no modo mascote
+  fica em ~25 % de um núcleo.
+- Opcional: sombra elíptica suave sob os pés, desenhada pelo Qt, com alfa 0.25.
 
 ## 10. Critérios visuais (verificados no M5 com vídeo)
 
-1. Os pés tocam a borda da barra de tarefas: nem flutuam, nem afundam mais de 2 px.
+1. O pato aparece **inteiro**, da cabeça aos pés, em qualquer comportamento (andar, sentar,
+   bicar, cambalhota), e os pés tocam a borda da barra: nem flutuam, nem afundam mais de 2 px.
 2. Sem halo de cor do chão ou do céu em volta do pato.
 3. Ao andar, a janela acompanha o pato sem tremer e sem atraso perceptível.
 4. Os ícones da barra de tarefas e as janelas atrás continuam clicáveis fora do pato.

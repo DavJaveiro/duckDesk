@@ -49,7 +49,7 @@ Copyright Pollen Robotics. Licenciado sob a Apache License 2.0 —
 
 ### better-actuator-models (BAM) — Apache-2.0
 
-Biblioteca `bam`, de `Rhoban/bam` (commit `57d13ead53206a6bf0db3d66f86506ae8c2ce01a`,
+Biblioteca `bam`, de `Rhoban/bam` (commit `62bd8ce12154340be97e06f7f41a0ca8f116d967`,
 branch `mjlab_frictionloss`), instalada como dependência.
 
 Copyright Rhoban. Licenciado sob a Apache License 2.0 —

@@ -55,15 +55,15 @@ cenário no `infer_policy.py`) ou bug nosso.
 | Ensaio | Meta |
 |---|---|
 | Em pé 10 s, comando zero | inclinação < 10°; deriva em x e em y < 0.05 m |
-| Andar vx = 0.2 por 8 s | não cai; vx médio nos últimos 5 s entre 0.12 e 0.28 |
-| Girar wz = 1.0 por 4 s | taxa de guinada média entre 0.6 e 1.4 rad/s |
+| Andar vx = 0.3 por 8 s | não cai; vx médio nos últimos 5 s entre 0.10 e 0.25 (ADR-0006: o upstream dá 0.112) |
+| Girar wz = 1.5 por 4 s | taxa de guinada média entre 0.5 e 1.6 rad/s (ADR-0006) |
 | Sentar 5 s → levantar | o tronco desce ≥ 3 cm sentado; depois da subida, volta ao `walk` e anda |
 | Bicar o chão | termina em pé, de volta ao `walk` |
 | Cambalhota (5 tentativas, pequena perturbação inicial) | termina em pé em ≥ 4 de 5 |
 | Chute esq./dir. (5 cada) | a bola anda ≥ 0.3 m em ≥ 4 de 5 |
 | Empurrão forte (até cair) | a velstand levanta sozinha em ≤ 6 s, em ≥ 4 de 5 |
 
-5. Medir `H_m` (altura do pato em pé) e registrar no relatório.
+5. Medir `H_m` (do chão ao **topo da cabeça**, não a altura do tronco) e registrar no relatório.
 6. Opcional: investigação da ADR-0001 (configuração do `robotd` × a do `infer_policy`).
 
 ---
@@ -127,7 +127,7 @@ Tudo de 05 e a troca nos dois sentidos (04 §7, 05 §8).
 2. **[duro]** Vídeo mostrando os 6 critérios visuais de 05 §10 (pode ser mais de um vídeo).
 3. **[duro]** A troca simulador → mascote → simulador funciona 20 vezes seguidas sem vazar
    memória (RSS final ≤ RSS inicial + 30 MB) e sem erro no log.
-4. **[duro]** CPU no modo mascote ≤ 15 % de um núcleo (média de 60 s, piloto automático
+4. **[duro]** CPU no modo mascote ≤ 30 % de um núcleo a 30 fps (média de 60 s, piloto automático
    ligado); relatório com o modelo da CPU.
 5. Print com 125 % ou 150 % de escala mostrando os pés na borda da barra.
 
