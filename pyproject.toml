@@ -26,6 +26,8 @@ dev = [
     "ruff",
     "pyinstaller",
     "psutil",
+    "imageio>=2.38.1",
+    "imageio-ffmpeg>=0.8.1",
 ]
 
 [tool.uv.sources]
