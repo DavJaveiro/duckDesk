@@ -7,16 +7,18 @@ rendering never blocks physics and never runs more often than needed.
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from collections import deque
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import mujoco
 import numpy as np
 from PySide6.QtCore import QByteArray, QObject, Qt, QTimer
-from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from duckdesk import assets
 from duckdesk.brain.commands import Request
@@ -39,6 +41,51 @@ PUSH_N = 2.0  # lateral newtons (docs/04 section 5)
 PUSH_S = 0.1
 TICK_MS = 8  # Qt PreciseTimer (ADR-0003)
 MAX_FPS = 60  # simulator render cap (docs/02)
+INSTANCE_NAME = "duckdesk-instance"
+
+log = logging.getLogger("duckdesk.app")
+
+
+def setup_logging(settings: Settings) -> Path:
+    """Rotating log: %APPDATA%/DuckDesk/logs/duckdesk.log, 5 x 1 MB."""
+    log_dir = settings.path.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    target = log_dir / "duckdesk.log"
+    handler = RotatingFileHandler(target, maxBytes=1_048_576, backupCount=5, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(handler)
+    return target
+
+
+def notify_existing_instance(name: str = INSTANCE_NAME) -> bool:
+    """If an instance is already running, ask it to come forward and report True."""
+    sock = QLocalSocket()
+    sock.connectToServer(name)
+    if not sock.waitForConnected(300):
+        return False
+    sock.write(b"raise")
+    sock.flush()
+    sock.waitForBytesWritten(300)
+    return True
+
+
+def listen_for_raise(controller: AppController, name: str = INSTANCE_NAME) -> QLocalServer:
+    server = QLocalServer(controller if isinstance(controller, QObject) else None)
+    if not server.listen(name):
+        QLocalServer.removeServer(name)  # stale socket after a crash
+        server.listen(name)
+
+    def _on_conn():
+        while server.hasPendingConnections():
+            conn = server.nextPendingConnection()
+            conn.waitForReadyRead(200)
+            conn.deleteLater()
+            controller.show_simulator()
+
+    server.newConnection.connect(_on_conn)
+    return server
 
 
 class AppController(QObject):
@@ -235,34 +282,16 @@ class AppController(QObject):
     # --- tray + lifecycle ---------------------------------------------------------
 
     def _build_tray(self) -> None:
-        # Minimal tray (full menu arrives in M4): keeps the app alive when the
-        # window is hidden, per docs/04 sections 1 and 6.
-        self.tray = QSystemTrayIcon(self._duck_icon(), self.app)
-        menu = QMenu()
-        act_open = menu.addAction("Abrir simulador")
-        f = act_open.font()
-        f.setBold(True)
-        act_open.setFont(f)
-        act_open.triggered.connect(self._show_window)
-        menu.addAction("Sair", self.on_quit)
-        self.tray.setContextMenu(menu)
-        self.tray.setToolTip("DuckDesk")
-        self.tray.activated.connect(self._on_tray_activated)
+        from duckdesk.ui.tray import Tray
+
+        self.tray = Tray(self)
         self.tray.show()
-        self._tray_active = self.tray.isVisible() or True
+        self._tray_active = True
 
-    def _duck_icon(self) -> QIcon:
-        pm = QPixmap(32, 32)
-        pm.fill(Qt.GlobalColor.darkYellow)
-        return QIcon(pm)
-
-    def _on_tray_activated(self, reason) -> None:
-        if reason == QSystemTrayIcon.DoubleClick:
-            self._show_window()
-
-    def _show_window(self) -> None:
+    def show_simulator(self) -> None:
         self.window.showNormal()
         self.window.activateWindow()
+        self.window.raise_()
 
     def on_close_request(self) -> bool:
         """True -> hide instead of quit (tray keeps the app alive)."""
@@ -278,16 +307,27 @@ class AppController(QObject):
             )
         return True
 
+    def on_autopilot_toggled(self, on: bool) -> None:
+        self.settings["autopilot"] = on
+
+    def on_autostart_toggled(self, on: bool) -> None:
+        from duckdesk.platform import autostart
+
+        try:
+            autostart.set_enabled(on)
+            self.settings["autostart"] = on
+        except OSError as e:
+            log.error("falha ao escrever autostart: %s", e)
+            self.window.flash("não foi possível alterar a inicialização")
+
     def on_about(self) -> None:
-        self.window.warn(
-            "Sobre o DuckDesk",
-            "DuckDesk — microduck virtual (não-oficial).\n"
-            "Baseado em microduck_rl e microduck-policies (Pollen Robotics);"
-            " ver THIRD_PARTY_NOTICES.md.",
-        )
+        from duckdesk.ui.about import AboutDialog
+
+        AboutDialog(self.window).exec()
 
     def on_quit(self) -> None:
         self.timer.stop()
+        self.settings["last_mode"] = "simulator"
         self._save_geometry()
         self.app.quit()
 
@@ -309,6 +349,11 @@ def mujoco_flag(name: str):
 def run(argv=None) -> int:
     app = QApplication(argv or sys.argv)
     app.setQuitOnLastWindowClosed(False)  # tray keeps it alive
+    if notify_existing_instance():
+        return 0  # second launch: existing instance comes forward
     controller = AppController(app)
+    controller.log_file = setup_logging(controller.settings)
+    log.info("DuckDesk iniciando (modo=%s)", controller.settings["last_mode"])
+    controller._instance_server = listen_for_raise(controller)
     controller.window.show()
     return app.exec()

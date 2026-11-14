@@ -127,3 +127,32 @@ class _FakeCloseEvent:
 def test_quit_stops_timer(ctrl):
     ctrl.on_quit()
     assert not ctrl.timer.isActive()
+
+
+def test_about_dialog_text():
+    from duckdesk.ui.about import ABOUT_TEXT, notices_path
+
+    for needle in ("não oficial", "Pollen Robotics", "CC BY-NC-SA 4.0", "Apache-2.0", "LGPLv3"):
+        assert needle in ABOUT_TEXT
+    assert notices_path().name == "THIRD_PARTY_NOTICES.md"
+
+
+def test_tray_menu_shape(ctrl):
+    menu = ctrl.tray.contextMenu()
+    texts = [a.text() for a in menu.actions()]
+    for t in (
+        "Abrir simulador",
+        "Mostrar pato na barra",
+        "Comportamentos",
+        "Piloto automático",
+        "Pausar",
+        "Tamanho",
+        "Iniciar com o Windows",
+        "Sobre e licenças",
+        "Sair",
+    ):
+        assert t in texts
+    # mascot-only items disabled until M5
+    assert not ctrl.tray.act_mascot.isEnabled()
+    assert not ctrl.tray.act_autopilot.isEnabled()
+    assert ctrl.tray.act_autostart.isEnabled()

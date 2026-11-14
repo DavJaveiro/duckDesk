@@ -7,8 +7,11 @@ QMainWindow.saveGeometry().
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
+
+log = logging.getLogger("duckdesk.settings")
 
 _DEFAULT = {
     "window_geometry": None,  # base64 str, simulator window
@@ -33,8 +36,10 @@ class Settings:
         self._data = dict(_DEFAULT)
         try:
             self._data.update(json.loads(self.path.read_text(encoding="utf-8")))
-        except Exception:  # noqa: BLE001,S110 - missing/corrupt file -> defaults
+        except FileNotFoundError:
             pass
+        except Exception as e:  # noqa: BLE001 - corrupt file -> defaults, logged
+            log.warning("settings.json ilegível (%s); usando padrões", e)
 
     def __getitem__(self, key: str):
         return self._data[key]
@@ -44,4 +49,5 @@ class Settings:
         self.save()
 
     def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8")
