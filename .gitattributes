@@ -1,0 +1,9 @@
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.onnx binary
+*.stl binary
+*.png binary
+*.ico binary
+*.gif binary
+*.mp4 binary

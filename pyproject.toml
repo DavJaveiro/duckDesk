@@ -1,0 +1,52 @@
+[project]
+name = "duckdesk"
+version = "0.1.0"
+description = "A virtual Microduck for Windows: simulator window + taskbar mascot (unofficial)."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+# better-actuator-models (BAM) requires >=3.12,<3.13
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # Pinned to microduck_rl@0daab16 uv.lock — see docs/02-arquitetura.md
+    "mujoco==3.10.0",
+    "onnxruntime==1.24.4",
+    "numpy==2.4.1",
+    # BAM XL330 actuator model; only the [mujoco] extra (no mjlab/torch/warp)
+    "better-actuator-models[mujoco]",
+    "PySide6-Essentials>=6.8",
+]
+
+[project.scripts]
+duckdesk = "duckdesk.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "pyinstaller",
+    "psutil",
+]
+
+[tool.uv.sources]
+better-actuator-models = { git = "https://github.com/Rhoban/bam.git", rev = "57d13ead53206a6bf0db3d66f86506ae8c2ce01a" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/duckdesk"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["vendor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast tests, no window, no upstream",
+    "parity: numeric parity against vendor/microduck_rl (needs vendor/)",
+    "behavior: headless behavior trials (slower)",
+]

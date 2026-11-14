@@ -1,0 +1,23 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Reference clones of upstream (read-only, fetched by scripts/fetch_assets.py --vendor)
+vendor/
+
+# Upstream assets are fetched + hash-checked (assets/lock.json is committed)
+assets/upstream/
+assets/policies/
+
+# Build outputs
+build/
+dist/
+installer/Output/
+
+# Local
+*.log
+.DS_Store
+Thumbs.db
