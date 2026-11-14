@@ -1,5 +1,17 @@
 # DuckDesk
 
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![MuJoCo 3.10](https://img.shields.io/badge/MuJoCo-3.10-0A6EBD)](https://mujoco.org/)
+[![ONNX Runtime 1.24](https://img.shields.io/badge/ONNX_Runtime-1.24-005CED?logo=onnx&logoColor=white)](https://onnxruntime.ai/)
+[![NumPy 2.4](https://img.shields.io/badge/NumPy-2.4-013243?logo=numpy&logoColor=white)](https://numpy.org/)
+[![BAM](https://img.shields.io/badge/BAM-atuador_XL330-6E4C9E)](https://github.com/Rhoban/bam)
+[![PySide6 (Qt 6)](https://img.shields.io/badge/PySide6-Qt_6-41CD52?logo=qt&logoColor=white)](https://doc.qt.io/qtforpython-6/)
+[![uv](https://img.shields.io/badge/uv-gerenciador-DE5FE9?logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
+[![PyInstaller](https://img.shields.io/badge/PyInstaller-empacotamento-2F6DB5)](https://pyinstaller.org/)
+[![Inno Setup](https://img.shields.io/badge/Inno_Setup-instalador-264B99)](https://jrsoftware.org/isinfo.php)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6)](https://www.microsoft.com/windows)
+[![Licença Apache 2.0](https://img.shields.io/badge/Licen%C3%A7a-Apache_2.0-D22128?logo=apache&logoColor=white)](LICENSE)
+
 Um Microduck virtual para Windows. O pato é simulado com física de verdade (MuJoCo) e se move
 com **as mesmas redes neurais (políticas ONNX) que rodam no robô real** da Pollen Robotics /
 Hugging Face.
