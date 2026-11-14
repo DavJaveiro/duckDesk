@@ -52,6 +52,20 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=10.0)
     parser.add_argument("--mp4", type=Path, help="optional MP4 output via offscreen renderer")
     parser.add_argument("--fps", type=int, default=50)
+    parser.add_argument(
+        "--autopilot",
+        action="store_true",
+        help="let brain/autopilot.py drive (mascot mode)",
+    )
+    parser.add_argument(
+        "--x-range",
+        type=float,
+        nargs=2,
+        default=(-2.5, 2.5),
+        metavar=("MIN", "MAX"),
+        help="autopilot x bounds",
+    )
+    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
     walk_onnx = None
@@ -68,6 +82,12 @@ def main() -> int:
     watchdog = Watchdog()
     events = load_events(args.script) if args.script else []
 
+    autopilot = None
+    if args.autopilot:
+        from duckdesk.brain.autopilot import Autopilot
+
+        autopilot = Autopilot(np.random.default_rng(args.seed), x_range=tuple(args.x_range))
+
     renderer = None
     frames = []
     if args.mp4:
@@ -78,6 +98,8 @@ def main() -> int:
     command = DuckCommand()
     times_ms: list[float] = []
     watchdog_events: list[str] = []
+    x_violations = 0
+    max_abs_y = 0.0
     steps = int(args.seconds / CONTROL_DT)
     event_idx = 0
     step = 0
@@ -101,6 +123,20 @@ def main() -> int:
                         f"[{sim_time:5.1f}s] request {ev['request']}: {'ok' if ok else 'recusado'} ({msg})"
                     )
                 event_idx += 1
+
+            if autopilot is not None:
+                pos = sim.trunk_pos()
+                autopilot.update(
+                    CONTROL_DT,
+                    float(pos[0]),
+                    float(pos[1]),
+                    sim.trunk_yaw(),
+                    sim.trunk_tilt(),
+                    manager,
+                )
+                max_abs_y = max(max_abs_y, abs(float(pos[1])))
+                if not (args.x_range[0] <= pos[0] <= args.x_range[1]):
+                    x_violations += 1
 
             t0 = time.perf_counter()
             targets = manager.step(sim)
@@ -132,6 +168,18 @@ def main() -> int:
     print(
         f"velocidade final (corpo): v=({v_body[0]:+.3f}, {v_body[1]:+.3f}) m/s | wz {wz:+.3f} rad/s"
     )
+
+    if autopilot is not None:
+        print("\n=== piloto automatico ===")
+        total = sum(autopilot.time_in_state.values()) or 1.0
+        for st, secs in sorted(autopilot.time_in_state.items(), key=lambda kv: -kv[1]):
+            if secs > 0:
+                print(
+                    f"  {st:8s} {secs:7.1f} s ({100 * secs / total:4.1f} %)"
+                    f" | stint max {autopilot.max_stint[st]:5.1f} s"
+                )
+        print(f"quedas (RECOVER): {autopilot.falls} | resets watchdog: {len(watchdog_events)}")
+        print(f"|y| max: {max_abs_y:.3f} m | fora da faixa x: {x_violations} passos")
 
     if renderer is not None and frames:
         import imageio.v2 as imageio

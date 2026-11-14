@@ -30,11 +30,33 @@ Pelo ícone na bandeja do sistema (ou com duplo clique no pato), ele volta para 
 > software aberto deles nos termos das licenças: veja [docs/07-licencas.md](docs/07-licencas.md).
 > **Uso não comercial**, por causa da licença dos modelos 3D.
 
-## Status
+## Instalação (Windows)
 
-Fase de especificação. O código será escrito pelo Devin, seguindo [AGENTS.md](AGENTS.md) e o
-plano em [docs/08-plano-de-tarefas.md](docs/08-plano-de-tarefas.md). A revisão é feita contra
-[docs/09-checklist-revisao.md](docs/09-checklist-revisao.md).
+1. Baixe `DuckDesk-Setup-<versão>.exe` da página de releases.
+2. Execute o instalador. Ele instala **por usuário**, sem pedir administrador, em
+   `%LOCALAPPDATA%\Programs\DuckDesk`, e cria o grupo **DuckDesk** no Menu Iniciar.
+3. Na primeira execução, o Windows pode mostrar o aviso **"O Windows protegeu o computador"**
+   (SmartScreen): o executável é assinado apenas com certificado autoassinado. Clique em
+   **"Mais informações" → "Executar assim mesmo"**.
+4. Para abrir com o Windows, ative **"Iniciar com o Windows"** no menu da bandeja do sistema.
+
+Desinstalação: "Adicionar ou remover programas" → DuckDesk, ou
+`%LOCALAPPDATA%\Programs\DuckDesk\unins000.exe`.
+
+## Limitações conhecidas
+
+- **Windows 10/11 x64 apenas.** Não há versão para macOS, Linux ou ARM.
+- **Só CPU.** A física e as redes neurais rodam sem GPU; o pato anda a ~55 % da velocidade
+  comandada (comportamento da política `velstand` sob o modelo de atuador BAM em CPU — o
+  mesmo resultado do `infer_policy.py` oficial, medido em M1).
+- **Barra de tarefas na parte de baixo.** No modo mascote, a barra precisa estar visível e na
+  borda inferior; com barra no topo/lateral ou com ocultação automática, o pato usa a borda
+  inferior da área de trabalho como referência.
+- **Apps em tela cheia.** O mascote se esconde enquanto um app está em tela cheia e volta
+  quando ele sai.
+- **Políticas 61D apenas.** Arquivos ONNX de outros formatos são recusados.
+- **Uso não comercial** (licença CC BY-NC-SA 4.0 das malhas 3D). O executável é autoassinado;
+  o aviso do SmartScreen é esperado.
 
 ## Documentação
 

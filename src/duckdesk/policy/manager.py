@@ -50,6 +50,15 @@ REQUEST_TO_ROLE = {
 }
 
 
+def _sess_opts() -> ort.SessionOptions:
+    """Single-threaded ORT: the 61->14 net is tiny and its default thread pool
+    spin-waits, which burned ~2 idle cores on the Qt thread's behalf (M5 CPU cap)."""
+    o = ort.SessionOptions()
+    o.intra_op_num_threads = 1
+    o.inter_op_num_threads = 1
+    return o
+
+
 def _role_of(entry: dict) -> str | None:
     """Map a manifest entry to a DuckDesk role (docs/03 section 8 table)."""
     if entry.get("mode") == "roller":  # skate policies are out of scope
@@ -77,7 +86,9 @@ class PolicyManager:
             if role is None or role in self.sessions:
                 continue
             path = self.policies_dir / entry["file"]
-            session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+            session = ort.InferenceSession(
+                str(path), sess_options=_sess_opts(), providers=["CPUExecutionProvider"]
+            )
             self._check_io_contract(entry["file"], session)
             self.sessions[role] = session
             self.io_names[role] = (
@@ -94,7 +105,9 @@ class PolicyManager:
             raise ValueError(f"manifest v10 sem as politicas necessarias: {missing}")
 
         if walk_onnx is not None:
-            session = ort.InferenceSession(str(walk_onnx), providers=["CPUExecutionProvider"])
+            session = ort.InferenceSession(
+                str(walk_onnx), sess_options=_sess_opts(), providers=["CPUExecutionProvider"]
+            )
             self._check_io_contract(Path(walk_onnx).name, session)
             self.sessions["walk"] = session
             self.io_names["walk"] = (
@@ -138,6 +151,7 @@ class PolicyManager:
         self.delay_lag = delay_lag
         self.action_buffer = [np.zeros(ACTION_LEN, dtype=np.float32) for _ in range(delay_lag + 1)]
         self.buffer_index = 0
+        self.walk_policy_name = "velstand.onnx"
         self._update_command()
 
     @staticmethod
@@ -148,6 +162,20 @@ class PolicyManager:
             raise ValueError(
                 f"politica '{name}' fora do contrato 61->14: entrada {in_shape}, saida {out_shape}"
             )
+
+    def load_walk_policy(self, path: str | Path) -> None:
+        """Swap the walk-slot ONNX (docs/04 section 5). Assumes the caller ran
+        validate_user_onnx first."""
+        session = ort.InferenceSession(
+            str(path), sess_options=_sess_opts(), providers=["CPUExecutionProvider"]
+        )
+        self._check_io_contract(Path(path).name, session)
+        self.sessions["walk"] = session
+        self.io_names["walk"] = (
+            session.get_inputs()[0].name,
+            session.get_outputs()[0].name,
+        )
+        self.walk_policy_name = Path(path).name
 
     @property
     def session(self) -> ort.InferenceSession:

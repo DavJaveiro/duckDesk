@@ -79,6 +79,10 @@ def load_mujoco_with_bam(xml_path: str, bam_model, timestep: float, vin_drop_gai
     vin_drop_resistance = None if vin_drop_gain is None else vin_drop_gain * kt
 
     spec = mujoco.MjSpec.from_file(xml_path)
+    # Offscreen framebuffer sized for the 1920x1080 render cap (docs/02);
+    # default is 640x480 which rejects larger Renderer requests.
+    spec.visual.global_.offwidth = 1920
+    spec.visual.global_.offheight = 1080
     names = []
     for act in spec.actuators:
         tgt = act.target
@@ -251,6 +255,13 @@ class SimCore:
         _qw, qx, qy, _qz = self.trunk_quat()
         z_world_z = 1.0 - 2.0 * (qx * qx + qy * qy)
         return math.acos(max(-1.0, min(1.0, z_world_z)))
+
+    def trunk_yaw(self) -> float:
+        """World yaw of the trunk x-axis, in radians (-pi, pi]."""
+        qw, qx, qy, qz = self.trunk_quat()
+        siny = 2.0 * (qw * qz + qx * qy)
+        cosy = 1.0 - 2.0 * (qy * qy + qz * qz)
+        return math.atan2(siny, cosy)
 
     def body_velocity(self) -> tuple[np.ndarray, float]:
         """Body-frame linear velocity and yaw rate (upstream L1698-1706)."""
