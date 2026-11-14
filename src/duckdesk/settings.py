@@ -17,6 +17,7 @@ _DEFAULT = {
     "window_geometry": None,  # base64 str, simulator window
     "last_mode": "simulator",  # "simulator" | "mascot"
     "mascot_scale": 1.0,
+    "mascot_last_x": 0.0,
     "autopilot": True,
     "speed": 1.0,
     "autostart": False,

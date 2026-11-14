@@ -265,9 +265,11 @@ class SimulatorWindow(QMainWindow):
 
         m_mode = mb.addMenu("&Modo")
         self.act_mascot = self._act(
-            m_mode, "Enviar para a barra de tarefas", None, shortcut="Ctrl+M"
+            m_mode,
+            "Enviar para a barra de tarefas",
+            self.controller.toggle_mascot,
+            shortcut="Ctrl+M",
         )
-        self.act_mascot.setEnabled(False)  # arrives in M5
 
         m_help = mb.addMenu("A&juda")
         self._act(m_help, "Atalhos de teclado", self._show_shortcuts)
