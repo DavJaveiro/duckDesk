@@ -618,4 +618,6 @@ def run(argv=None) -> int:
     log.info("DuckDesk iniciando (modo=%s)", controller.settings["last_mode"])
     controller._instance_server = listen_for_raise(controller)
     controller.window.show()
+    if controller.settings["last_mode"] == "mascot":
+        controller.enter_mascot()  # restores the taskbar duck (hides the sim window)
     return app.exec()
