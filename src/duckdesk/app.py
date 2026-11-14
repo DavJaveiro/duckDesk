@@ -105,6 +105,16 @@ class AppController(QObject):
         self._head = np.zeros(4, dtype=np.float32)
         self._body = np.zeros(6, dtype=np.float32)
         self._push_left = 0
+        self.mascot = None  # MascotWindow while in mascot mode
+        self.mascot_map = None
+        self._mascot_renderer = None
+        self._last_mascot_frame = 0.0
+        self._dragging_duck = False
+        self._drag_lift = 0
+        self._fullscreen_hidden = False
+        self._mascot_fps_cap = 1.0 / 30.0
+        self.autopilot = None
+        self._rng = np.random.default_rng()
         self._vel_hist: deque = deque(maxlen=int(1.0 / CONTROL_DT))
         self._frame_times: deque = deque(maxlen=120)
         self._last_render = 0.0
@@ -124,11 +134,23 @@ class AppController(QObject):
         self.timer.setInterval(TICK_MS)
         self.timer.timeout.connect(self._tick)
         self.timer.start()
+        # mascot housekeeping timers (05 sections 1-2)
+        self._taskbar_timer = QTimer(self)
+        self._taskbar_timer.setInterval(1000)
+        self._taskbar_timer.timeout.connect(self.on_taskbar_timer)
+        self._taskbar_timer.start()
+        self._band_timer = QTimer(self)
+        self._band_timer.setInterval(2000)
+        self._band_timer.timeout.connect(self.on_band_poll)
+        self._band_timer.start()
 
     # --- main loop ------------------------------------------------------------
 
     def _tick(self) -> None:
         now = time.perf_counter()
+        if self.mascot is not None:
+            self._tick_mascot(now)
+            return
         n = self.clock.steps_due(now - self._last)
         self._last = now
         for _ in range(n):
@@ -201,7 +223,7 @@ class AppController(QObject):
             elif intent is AppIntent.PAUSE:
                 self.on_toggle_pause()
             elif intent is AppIntent.MINIMIZE:
-                self.window.flash("modo mascote chega no M5")
+                self.toggle_mascot()
 
     def on_request(self, req: Request) -> None:
         ok, msg = self.mgr.request(req, self.sim)
@@ -309,6 +331,15 @@ class AppController(QObject):
 
     def on_autopilot_toggled(self, on: bool) -> None:
         self.settings["autopilot"] = on
+        if self.autopilot is not None:
+            self.autopilot.enabled = on
+
+    def on_size_changed(self, scale: float) -> None:
+        self.settings["mascot_scale"] = scale
+        if self.mascot is not None:
+            # rebuild window/mapping at the new size (05 section 2)
+            self.exit_mascot()
+            self.enter_mascot()
 
     def on_autostart_toggled(self, on: bool) -> None:
         from duckdesk.platform import autostart
@@ -327,9 +358,240 @@ class AppController(QObject):
 
     def on_quit(self) -> None:
         self.timer.stop()
-        self.settings["last_mode"] = "simulator"
+        if self.mascot is not None:
+            self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
+            self.settings["last_mode"] = "mascot"
+        else:
+            self.settings["last_mode"] = "simulator"
         self._save_geometry()
         self.app.quit()
+
+    # --- mascot mode (docs/05) ---------------------------------------------------
+
+    def _mascot_band(self):
+        """Poll taskbar + work area, rebuild the band/mapping (05 section 1)."""
+        from PySide6.QtGui import QGuiApplication
+
+        from duckdesk.platform import win_taskbar
+        from duckdesk.platform.mascot_map import Dpi, MascotMapping, compute_band
+
+        screen = QGuiApplication.primaryScreen()
+        dpi = Dpi(screen.devicePixelRatio())
+        wa = screen.availableGeometry()
+        band = compute_band(
+            win_taskbar.get_taskbar_rect(),
+            (wa.left(), wa.top(), wa.right() + 1, wa.bottom() + 1),
+            dpi,
+            win_taskbar.taskbar_autohide(),
+        )
+        if band.hidden:
+            log.info("barra oculta/topo/lateral — modo degradado (chão = base da área de trabalho)")
+        size = int(self.settings["mascot_scale"] * 120)
+        self.mascot_map = MascotMapping(band, size)
+        if self.autopilot is not None:
+            self.autopilot.x_min, self.autopilot.x_max = (
+                self.mascot_map.x_min,
+                self.mascot_map.x_max,
+            )
+        return band
+
+    def enter_mascot(self) -> None:
+        """04 section 7 / 05 section 4: reset at mascot_last_x, ball parked,
+        autopilot from IDLE."""
+        from duckdesk.brain.autopilot import Autopilot
+        from duckdesk.platform.mascot_map import MARGIN_FRAC
+        from duckdesk.render.mascot import MascotRenderer
+        from duckdesk.ui.mascot_window import MascotWindow
+
+        self._mascot_band()
+        mm = self.mascot_map
+        last_x = mm.clamp_x(float(self.settings["mascot_last_x"]))
+        yaw = 0.0 if self._rng.random() < 0.5 else np.pi
+        self.sim.reset()
+        jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
+        adr = self.sim.model.jnt_qposadr[jid]
+        self.sim.data.qpos[adr] = last_x
+        self.sim.data.qpos[adr + 1] = 0.0
+        mujoco.mj_forward(self.sim.model, self.sim.data)
+        self.mgr.request(Request.RESET, self.sim)
+        self.sim.park_ball()
+        self._place_yaw(yaw)
+
+        self.autopilot = Autopilot(
+            np.random.default_rng(),
+            x_range=(mm.x_min, mm.x_max),
+            enabled=bool(self.settings["autopilot"]),
+        )
+        screen = self.window.screen()
+        # 05 section 9: render at 2S_px physical for 2x supersampling
+        size_phys = round(
+            mm.S * screen.devicePixelRatio()
+        )  # MSAA in GL replaces manual supersample
+        self._mascot_renderer = MascotRenderer(self.sim.model, size_phys)
+        self._mascot_renderer.set_view_height(mm.ortho_height_m())
+        self.mascot = MascotWindow(mm.S)
+        m = round(MARGIN_FRAC * mm.S)
+        self._mascot_margin = m
+        self.mascot.move(round(mm.band.center), round(mm.window_top(m)))
+        self._wire_mascot()
+        self.mascot.show()
+        self.window.hide()
+        self.settings["last_mode"] = "mascot"
+        if self._tray_active:
+            self.tray.act_mascot.setText("Esconder pato")
+        log.info("modo mascote: S=%dpx, faixa x=[%.2f, %.2f] m", mm.S, mm.x_min, mm.x_max)
+
+    def _place_yaw(self, yaw: float) -> None:
+        jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
+        adr = self.sim.model.jnt_qposadr[jid]
+        self.sim.data.qpos[adr + 3 : adr + 7] = (np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2))
+        mujoco.mj_forward(self.sim.model, self.sim.data)
+
+    def exit_mascot(self) -> None:
+        """05 section 8: no reset — the duck continues where it is."""
+        self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
+        if self.mascot is not None:
+            self.mascot.hide()
+            self.mascot.deleteLater()
+        self.mascot = None
+        self._mascot_renderer = None
+        self.autopilot = None
+        self.keyboard = KeyboardMapper()  # command starts at zero (05 section 8)
+        self.settings["last_mode"] = "simulator"
+        if self._tray_active:
+            self.tray.act_mascot.setText("Mostrar pato na barra")
+        self.show_simulator()
+        self._last = time.perf_counter()
+
+    def toggle_mascot(self) -> None:
+        if self.mascot is None:
+            self.enter_mascot()
+        else:
+            self.exit_mascot()
+
+    def _wire_mascot(self) -> None:
+        w = self.mascot
+        w.clicked.connect(self._mascot_click)
+        w.double_clicked.connect(self.exit_mascot)
+        w.right_clicked.connect(lambda p: self.tray.contextMenu().popup(p))
+        w.drag_started.connect(self._mascot_drag_start)
+        w.drag_moved.connect(self._mascot_drag_move)
+        w.drag_finished.connect(self._mascot_drag_finish)
+
+    def _tick_mascot(self, now: float) -> None:
+        n = self.clock.steps_due(now - self._last)
+        self._last = now
+        if self._dragging_duck or self._fullscreen_hidden:
+            return  # paused while dragged or a fullscreen app holds the screen
+        for _ in range(n):
+            if self.autopilot is not None:
+                x, _, _ = self.sim.trunk_pos()
+                self.autopilot.update(
+                    CONTROL_DT,
+                    x,
+                    self.sim.trunk_pos()[1],
+                    self.sim.trunk_yaw(),
+                    self.sim.trunk_tilt(),
+                    self.mgr,
+                )
+            targets = self.mgr.step(self.sim)
+            self.sim.step_control(targets)
+            event = self.watchdog.check(self.sim, CONTROL_DT)
+            if event:
+                self.mgr.request(Request.RESET, self.sim)
+        # keep the duck inside the band (05 section 4)
+        x = float(self.sim.trunk_pos()[0])
+        if x < self.mascot_map.x_min - 0.05 or x > self.mascot_map.x_max + 0.05:
+            self._soft_clamp()
+
+        idle = self.autopilot is not None and self.autopilot.state.value == "idle"
+        cap = 1.0 / (12.0 if idle else 15.0)  # 05 section 9 allows up to 30; CPU target
+        if now - self._last_mascot_frame < cap:
+            return
+        self._last_mascot_frame = now
+        self._render_mascot_frame()
+
+    def _soft_clamp(self) -> None:
+        """Soft reset 0.1 m inside the nearest band edge (05 section 4)."""
+        x = float(self.sim.trunk_pos()[0])
+        inside = self.mascot_map.x_min + 0.1 if x < 0 else self.mascot_map.x_max - 0.1
+        if x < self.mascot_map.x_min:
+            inside = self.mascot_map.x_min + 0.1
+        else:
+            inside = self.mascot_map.x_max - 0.1
+        jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
+        adr = self.sim.model.jnt_qposadr[jid]
+        self.sim.data.qpos[adr] = inside
+        mujoco.mj_forward(self.sim.model, self.sim.data)
+
+    def _render_mascot_frame(self) -> None:
+        mm = self.mascot_map
+        x = float(self.sim.trunk_pos()[0])
+        center_px = mm.screen_x(x)
+        # ground z=0 lands on window row S-m (05 section 3)
+        lookat = np.array([x, 0.0, mm.ortho_height_m() / 2 - self._mascot_margin / mm.ppm])
+        frame = self._mascot_renderer.frame(self.sim.data, lookat)
+        self.mascot.set_frame(frame)
+        # move only when the pixel x changed (ADR-0005: no trembling)
+        cx = round(center_px) - mm.S // 2
+        top = round(mm.window_top(self._mascot_margin)) - self._drag_lift
+        if (cx, top) != (self.mascot.x(), self.mascot.y()):
+            self.mascot.move(cx, top)
+
+    def _mascot_click(self, _pos) -> None:
+        if self.autopilot is None:
+            return
+        r = float(self._rng.random())
+        if r < 0.40:
+            self.on_request(Request.PECK)
+        elif r < 0.70:
+            self.on_toggle_sit()
+        elif r < 0.85:
+            self.on_request(Request.ROLL)
+        else:  # look toward the cursor for 2 s (05 section 6)
+            side = 1.0 if _pos.x() > self.mascot.width() / 2 else -1.0
+            self._head[2] = 0.6 * side  # head_yaw
+
+    def _mascot_drag_start(self) -> None:
+        self._dragging_duck = True
+
+    def _mascot_drag_move(self, pos) -> None:
+        """Window follows the cursor horizontally, up to 200 px up (05 section 6)."""
+        mm = self.mascot_map
+        base_top = round(mm.window_top(self._mascot_margin))
+        self._drag_lift = max(0, min(200, base_top - pos.y()))
+        self.mascot.move(pos.x() - mm.S // 2, base_top - self._drag_lift)
+
+    def _mascot_drag_finish(self, pos) -> None:
+        self._dragging_duck = False
+        self._drag_lift = 0
+        x = self.mascot_map.clamp_x(self.mascot_map.world_x(pos.x()))
+        self.sim.reset()
+        jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
+        adr = self.sim.model.jnt_qposadr[jid]
+        self.sim.data.qpos[adr] = x
+        self.sim.data.qpos[adr + 1] = 0.0
+        mujoco.mj_forward(self.sim.model, self.sim.data)
+        self.mgr.request(Request.RESET, self.sim)
+        self.sim.park_ball()
+
+    def on_taskbar_timer(self) -> None:
+        """1 s: reassert TOPMOST + hide under fullscreen apps (05 section 2)."""
+        if self.mascot is None:
+            return
+        from duckdesk.platform import win_topmost
+
+        win_topmost.reassert_topmost(int(self.mascot.winId()))
+        full = win_topmost.fullscreen_app_active()
+        if full != self._fullscreen_hidden:
+            self._fullscreen_hidden = full
+            self.mascot.setVisible(not full)
+
+    def on_band_poll(self) -> None:
+        """2 s: taskbar rect / work area changes (05 section 1)."""
+        if self.mascot is None:
+            return
+        self._mascot_band()
 
     # --- geometry persistence ---------------------------------------------------
 

@@ -71,7 +71,7 @@ def test_window_builds(ctrl):
     for m in ("&Arquivo", "&Simulação", "&Comportamentos", "&Visualização", "&Modo", "A&juda"):
         assert m in menus
     assert len(w.head_sliders) == 4 and len(w.body_sliders) == 6
-    assert not w.act_mascot.isEnabled()  # Ctrl+M disabled until M5
+    assert w.act_mascot.isEnabled()  # Ctrl+M enters mascot mode (M5)
 
 
 def test_refused_request_flashes_status(ctrl):
@@ -129,6 +129,49 @@ def test_quit_stops_timer(ctrl):
     assert not ctrl.timer.isActive()
 
 
+def test_mascot_cycle_20x_no_leak(ctrl):
+    """Acceptance #3: simulator <-> mascot 20x, RSS growth <= 30 MB."""
+    import os
+
+    import psutil
+
+    proc = psutil.Process(os.getpid())
+    ctrl.enter_mascot()
+    ctrl.exit_mascot()  # warm-up: allocate one-time structures
+    rss0 = proc.memory_info().rss
+    for _ in range(20):
+        ctrl.enter_mascot()
+        assert ctrl.mascot is not None
+        ctrl.exit_mascot()
+        assert ctrl.mascot is None
+    rss1 = proc.memory_info().rss
+    assert rss1 <= rss0 + 30 * 1048576
+
+
+def test_mascot_hides_under_fullscreen(ctrl, monkeypatch):
+    """Acceptance #6: a fullscreen app hides + pauses the mascot (05 section 2)."""
+    from duckdesk.platform import win_topmost
+
+    ctrl.enter_mascot()
+    monkeypatch.setattr(win_topmost, "fullscreen_app_active", lambda: True)
+    ctrl.on_taskbar_timer()
+    assert ctrl._fullscreen_hidden
+    assert not ctrl.mascot.isVisible()
+    monkeypatch.setattr(win_topmost, "fullscreen_app_active", lambda: False)
+    ctrl.on_taskbar_timer()
+    assert ctrl.mascot.isVisible()  # returns when the fullscreen app exits
+    ctrl.exit_mascot()
+
+
+def test_mascot_frame_produces_alpha(ctrl):
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(__import__("time").perf_counter() + 1.0)
+    assert ctrl.mascot._alpha is not None
+    assert ctrl.mascot._alpha.max() == 255  # duck pixels present
+    assert ctrl.mascot._alpha.min() == 0  # transparent background
+    ctrl.exit_mascot()
+
+
 def test_about_dialog_text():
     from duckdesk.ui.about import ABOUT_TEXT, notices_path
 
@@ -152,7 +195,6 @@ def test_tray_menu_shape(ctrl):
         "Sair",
     ):
         assert t in texts
-    # mascot-only items disabled until M5
-    assert not ctrl.tray.act_mascot.isEnabled()
-    assert not ctrl.tray.act_autopilot.isEnabled()
+    assert ctrl.tray.act_mascot.isEnabled()
+    assert ctrl.tray.act_autopilot.isEnabled()
     assert ctrl.tray.act_autostart.isEnabled()
