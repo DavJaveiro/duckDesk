@@ -16,11 +16,11 @@ def test_hold_forward_ramps_to_target():
     kb = KeyboardMapper()
     kb.press("w")
     cmd, _, _ = kb.poll(DT)
-    assert 0 < cmd.twist[0] < 0.25  # ramping, not a step
+    assert 0 < cmd.twist[0] < 0.3  # ramping, not a step
     # After enough time it reaches the W target.
     for _ in range(30):
         cmd, _, _ = kb.poll(DT)
-    assert cmd.twist[0] == pytest.approx(0.25)
+    assert cmd.twist[0] == pytest.approx(0.3)
 
 
 def test_release_ramps_back_to_zero():
@@ -30,7 +30,7 @@ def test_release_ramps_back_to_zero():
         kb.poll(DT)
     kb.release("w")
     cmd, _, _ = kb.poll(DT)
-    assert 0 < cmd.twist[0] < 0.25  # decelerating
+    assert 0 < cmd.twist[0] < 0.3  # decelerating
     for _ in range(30):
         cmd, _, _ = kb.poll(DT)
     assert cmd.twist[0] == pytest.approx(0.0)
@@ -50,10 +50,10 @@ def test_opposing_keys_net_target():
     kb.press("w")
     kb.press("s")
     cmd, _, _ = kb.poll(DT)
-    assert cmd.twist[0] == pytest.approx(LIN_RAMP * DT)  # ramp toward +0.05
+    assert cmd.twist[0] == pytest.approx(0.0)  # W and S cancel (both 0.3)
     for _ in range(30):
         cmd, _, _ = kb.poll(DT)
-    assert cmd.twist[0] == pytest.approx(0.25 - 0.20)
+    assert cmd.twist[0] == pytest.approx(0.0)
 
 
 def test_shift_boosts_to_limit():
@@ -62,7 +62,7 @@ def test_shift_boosts_to_limit():
     kb.press("shift")
     for _ in range(60):
         cmd, _, _ = kb.poll(DT)
-    assert cmd.twist[0] == pytest.approx(0.3)  # range max, not 0.25
+    assert cmd.twist[0] == pytest.approx(0.3)  # range max
 
 
 def test_arrow_keys_match_letters():
@@ -70,7 +70,7 @@ def test_arrow_keys_match_letters():
     kb.press("up")
     for _ in range(30):
         cmd, _, _ = kb.poll(DT)
-    assert cmd.twist[0] == pytest.approx(0.25)
+    assert cmd.twist[0] == pytest.approx(0.3)
 
 
 def test_strafe_and_turn():
@@ -79,8 +79,8 @@ def test_strafe_and_turn():
     kb.press("d")
     for _ in range(30):
         cmd, _, _ = kb.poll(DT)
-    assert cmd.twist[1] == pytest.approx(0.15)
-    assert cmd.twist[2] == pytest.approx(-1.0)
+    assert cmd.twist[1] == pytest.approx(0.2)
+    assert cmd.twist[2] == pytest.approx(-1.5)
 
 
 def test_one_shot_requests_fire_once():

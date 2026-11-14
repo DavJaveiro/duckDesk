@@ -71,7 +71,7 @@ def _role_of(entry: dict) -> str | None:
 
 class PolicyManager:
     def __init__(
-        self, policies_dir: str | Path, walk_onnx: str | Path | None = None, delay_lag: int = 3
+        self, policies_dir: str | Path, walk_onnx: str | Path | None = None, delay_lag: int = 0
     ):
         self.policies_dir = Path(policies_dir)
         manifest = json.loads((self.policies_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -143,11 +143,11 @@ class PolicyManager:
         self.command = np.zeros(COMMAND_LEN, dtype=np.float32)
         self.last_obs: np.ndarray | None = None
 
-        # Actuator delay ring buffer (upstream L446-459, L866-883). Training DR
-        # uses delay 3..6 control steps (_BAM_ACTUATOR_KWARGS); lag=0 leaves the
-        # policy out-of-distribution — it stands but will not walk. See
-        # duvidas.md — docs/03 §5 says "delay desligado" but the behaviour
-        # criteria are unreachable without it.
+        # Actuator delay ring buffer (upstream L446-459, L866-883), in CONTROL
+        # steps. Default 0 = upstream infer_policy.py default (docs/03 section 5).
+        # Measured in ADR-0006: lag 0 recovers from falls 5/5 and walks 0.11 m/s
+        # at vx=0.3; lag 1 (20 ms) walks 0.15 but re-falls 2/5; lag 3 (60 ms, the
+        # old default) is outside the 15-30 ms training DR (3..6 physics steps).
         self.delay_lag = delay_lag
         self.action_buffer = [np.zeros(ACTION_LEN, dtype=np.float32) for _ in range(delay_lag + 1)]
         self.buffer_index = 0

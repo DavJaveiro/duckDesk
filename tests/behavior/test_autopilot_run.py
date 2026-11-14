@@ -1,9 +1,9 @@
 """M2 acceptance: 10 minutes of headless autopilot (docs/08 section M2).
 
 Runs the real SimCore + PolicyManager + Autopilot for 600 s of simulated time.
-Checks: never leaves the x range, no state stuck > 60 s; |y| excursion is a
-documented xfail (duvidas.md #6). Prints the state histogram + falls/resets for
-the report.
+Checks: never leaves the x range, no state stuck > 60 s, |y| < 0.3 m
+(duvidas.md #6, resolved by ADR-0006). Prints the state histogram +
+falls/resets for the report.
 """
 
 from __future__ import annotations
@@ -67,12 +67,9 @@ def test_no_state_stuck_over_60s(autopilot_log):
     assert worst <= 60.0
 
 
-@pytest.mark.xfail(
-    reason="duvidas.md #6: |y| escapa apos quedas (roulade ~20% falha) e o "
-    "retorno e lento com a puxada de rumo limitada a 0.3 rad + marcha ~0.11 m/s.",
-    strict=False,
-)
 def test_abs_y_under_0p3(autopilot_log):
+    """[duro] in docs/08 M2. With ADR-0006 (lag 0, vx 0.3) seed 0 peaks at
+    |y| = 0.12 m with one fall in 10 min (was an xfail under lag 3)."""
     _, _, ys, _ = autopilot_log
     print(f"\n|y| max {np.abs(ys).max():.3f} m")
     assert np.abs(ys).max() < 0.3

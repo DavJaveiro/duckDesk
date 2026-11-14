@@ -23,7 +23,7 @@ wheels = [
 [[package]]
 name = "better-actuator-models"
 version = "1.0.1"
-source = { git = "https://github.com/Rhoban/bam.git?rev=57d13ead53206a6bf0db3d66f86506ae8c2ce01a#57d13ead53206a6bf0db3d66f86506ae8c2ce01a" }
+source = { git = "https://github.com/Rhoban/bam.git?rev=62bd8ce12154340be97e06f7f41a0ca8f116d967#62bd8ce12154340be97e06f7f41a0ca8f116d967" }
 dependencies = [
     { name = "colorama" },
     { name = "numpy" },
@@ -67,7 +67,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "better-actuator-models", extras = ["mujoco"], git = "https://github.com/Rhoban/bam.git?rev=57d13ead53206a6bf0db3d66f86506ae8c2ce01a" },
+    { name = "better-actuator-models", extras = ["mujoco"], git = "https://github.com/Rhoban/bam.git?rev=62bd8ce12154340be97e06f7f41a0ca8f116d967" },
     { name = "mujoco", specifier = "==3.10.0" },
     { name = "numpy", specifier = "==2.4.1" },
     { name = "onnxruntime", specifier = "==1.24.4" },

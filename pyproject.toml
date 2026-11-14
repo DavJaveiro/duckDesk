@@ -31,7 +31,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-better-actuator-models = { git = "https://github.com/Rhoban/bam.git", rev = "57d13ead53206a6bf0db3d66f86506ae8c2ce01a" }
+better-actuator-models = { git = "https://github.com/Rhoban/bam.git", rev = "62bd8ce12154340be97e06f7f41a0ca8f116d967" }
 
 [build-system]
 requires = ["hatchling"]

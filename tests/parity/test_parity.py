@@ -28,9 +28,9 @@ OBS_ATOL = 1e-5
 ACTION_ATOL = 1e-5
 QPOS_ATOL = 1e-4
 
-# Actuator delay: training DR is 3..6 (see manager); both sides must run the
-# same lag or the delayed-action buffers diverge.
-DELAY_LAG = 3
+# Actuator delay in control steps: 0, the upstream default (ADR-0006). Both
+# sides must run the same lag or the delayed-action buffers diverge.
+DELAY_LAG = 0
 
 
 def _make_upstream(infer_policy):

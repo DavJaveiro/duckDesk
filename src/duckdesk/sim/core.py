@@ -9,11 +9,9 @@ Do not change semantics: the parity test (docs/03 section 10) proves numeric
 equality with the upstream. Deviations must be recorded in
 docs/relatorios/duvidas.md.
 
-Note (duvidas.md): upstream calls MujocoController(vin_drop_gain=...) because its
-uv.lock pins bam@62bd8ce. Our pinned bam@57d13ea renamed the parameter to
-vin_drop_resistance (Rhoban/bam@e4bf1aa): the drop is now R * (sum|tau| / kt).
-We keep the upstream signature and translate with R = gain * kt, which yields
-the identical voltage sag.
+BAM is pinned to Rhoban/bam@62bd8ce, the exact revision microduck_rl@0daab16's
+uv.lock resolves (duvidas.md #1, ADR-0006), so MujocoController takes the same
+vin_drop_gain argument the upstream passes.
 """
 
 from __future__ import annotations
@@ -73,10 +71,6 @@ def load_mujoco_with_bam(xml_path: str, bam_model, timestep: float, vin_drop_gai
     kt = bam_model.kt.value
     R = bam_model.R.value
     force_limit = bam_model.actuator.vin * kt / R
-    # bam@57d13ea API: vin_drop_resistance [Ohm] replaces vin_drop_gain [V/(N*m)].
-    # Upstream: V_drop = gain * sum|tau|; bam: V_drop = R * sum|tau| / kt.
-    # R = gain * kt makes them identical (see module docstring / duvidas.md).
-    vin_drop_resistance = None if vin_drop_gain is None else vin_drop_gain * kt
 
     spec = mujoco.MjSpec.from_file(xml_path)
     # Offscreen framebuffer sized for the 1920x1080 render cap (docs/02);
@@ -107,12 +101,7 @@ def load_mujoco_with_bam(xml_path: str, bam_model, timestep: float, vin_drop_gai
     model.opt.timestep = timestep
     data = mujoco.MjData(model)
     bam_ctrl = MujocoController(
-        bam_model,
-        names,
-        model,
-        data,
-        vin_drop_resistance=vin_drop_resistance,
-        vin_min=vin_min,
+        bam_model, names, model, data, vin_drop_gain=vin_drop_gain, vin_min=vin_min
     )
     return model, data, bam_ctrl, names
 

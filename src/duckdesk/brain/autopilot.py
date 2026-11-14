@@ -24,7 +24,7 @@ from duckdesk.brain.commands import DuckCommand, Request
 
 IDLE_MIN, IDLE_MAX = 2.0, 6.0
 SIT_MIN, SIT_MAX = 5.0, 20.0
-WALK_V_MIN, WALK_V_MAX = 0.15, 0.25
+WALK_V_MIN, WALK_V_MAX = 0.28, 0.3  # velstand stalls below ~0.25 (ADR-0006)
 MIN_TARGET_DIST = 0.5
 ARRIVE_TOL = 0.05
 EDGE_MARGIN = 0.15
@@ -36,6 +36,10 @@ LOOK_PERIOD = (1.0, 2.0)
 LOOK_RAMP = 1.0  # rad/s
 LAUNCH_S = 0.35  # yaw wiggle on WALK entry (see module docstring)
 LAUNCH_WZ = 0.7
+# In-place turns use the top of the trained range: velstand ignores |wz| below
+# ~1.0 when standing still (official infer_policy.py: 0.01 rad/s at wz=1.0,
+# 0.73 at wz=1.5). ADR-0006.
+TURN_WZ = 1.5
 NO_PROGRESS_S = 25.0  # WALK bail-out (see module docstring)
 ROLL_CLEAR = 0.4
 ROLL_COOLDOWN_S = 180.0
@@ -239,7 +243,8 @@ class Autopilot:
                         self._idle_left = self._draw(IDLE_MIN, IDLE_MAX)
 
         elif self.state is AutoState.TURN:
-            wz, err = self._heading(x, y, yaw)
+            _, err = self._heading(x, y, yaw)
+            wz = math.copysign(TURN_WZ, err)  # bang-bang: below ~1.0 it would stall
             cmd.twist = np.array([0.0, 0.0, wz], dtype=np.float32)
             if abs(err) < YAW_TOL:
                 self._goto(self._prev if self._prev is not AutoState.TURN else AutoState.IDLE)

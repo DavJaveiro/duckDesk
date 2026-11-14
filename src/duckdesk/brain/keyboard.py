@@ -24,7 +24,9 @@ LIN_RAMP = 1.5  # m/s^2
 ANG_RAMP = 6.0  # rad/s^2
 
 # Base directional targets and the Shift-boosted ones (docs/03 section 8 limits).
-_BASE = {"vx_f": 0.25, "vx_b": -0.20, "vy": 0.15, "wz": 1.0}
+# velstand ignores |vx| below ~0.25 under BAM-CPU (ADR-0006): walk keys use the
+# top of the trained range so a key press always produces steps.
+_BASE = {"vx_f": 0.3, "vx_b": -0.3, "vy": 0.2, "wz": 1.5}
 _BOOST = {"vx_f": 0.3, "vx_b": -0.3, "vy": 0.2, "wz": 1.5}
 
 _FORWARD = frozenset(("w", "up"))
