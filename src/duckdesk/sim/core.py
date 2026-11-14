@@ -79,6 +79,10 @@ def load_mujoco_with_bam(xml_path: str, bam_model, timestep: float, vin_drop_gai
     vin_drop_resistance = None if vin_drop_gain is None else vin_drop_gain * kt
 
     spec = mujoco.MjSpec.from_file(xml_path)
+    # Offscreen framebuffer sized for the 1920x1080 render cap (docs/02);
+    # default is 640x480 which rejects larger Renderer requests.
+    spec.visual.global_.offwidth = 1920
+    spec.visual.global_.offheight = 1080
     names = []
     for act in spec.actuators:
         tgt = act.target

@@ -138,6 +138,7 @@ class PolicyManager:
         self.delay_lag = delay_lag
         self.action_buffer = [np.zeros(ACTION_LEN, dtype=np.float32) for _ in range(delay_lag + 1)]
         self.buffer_index = 0
+        self.walk_policy_name = "velstand.onnx"
         self._update_command()
 
     @staticmethod
@@ -148,6 +149,18 @@ class PolicyManager:
             raise ValueError(
                 f"politica '{name}' fora do contrato 61->14: entrada {in_shape}, saida {out_shape}"
             )
+
+    def load_walk_policy(self, path: str | Path) -> None:
+        """Swap the walk-slot ONNX (docs/04 section 5). Assumes the caller ran
+        validate_user_onnx first."""
+        session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+        self._check_io_contract(Path(path).name, session)
+        self.sessions["walk"] = session
+        self.io_names["walk"] = (
+            session.get_inputs()[0].name,
+            session.get_outputs()[0].name,
+        )
+        self.walk_policy_name = Path(path).name
 
     @property
     def session(self) -> ort.InferenceSession:

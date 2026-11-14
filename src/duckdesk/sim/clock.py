@@ -15,8 +15,9 @@ class SimClock:
     """
 
     def __init__(self, speed: float = 1.0):
-        self.speed = speed  # 0.5 or 1.0
+        self.speed = speed  # 0.25, 0.5 or 1.0
         self.paused = False
+        self.discarded = 0  # steps dropped by the backlog cap (status bar)
         self._accumulator = 0.0
 
     def steps_due(self, elapsed_s: float) -> int:
@@ -26,6 +27,7 @@ class SimClock:
         self._accumulator += elapsed_s * self.speed
         steps = int(self._accumulator / CONTROL_DT)
         if steps > MAX_STEPS_PER_TICK:
+            self.discarded += steps - MAX_STEPS_PER_TICK
             steps = MAX_STEPS_PER_TICK
             self._accumulator = 0.0  # discard the backlog
         else:
