@@ -53,6 +53,30 @@ bruscos. O robô real também suaviza o comando ("the caller's smoothed command"
 Teclas de comportamento respeitam as regras de 03 §8. Quando um pedido é recusado, a barra de
 status mostra o motivo por 2 s (por exemplo, "Levante o pato primeiro").
 
+### 3a. Controle (gamepad)
+
+Qualquer controle funciona no modo simulador (`platform/gamepad.py`, sondado no próprio timer do
+Qt — sem threads nem dependências): **XInput** cobre Xbox e compatíveis; **WinMM
+`joyGetPosEx`** cobre o restante (DualShock/DualSense, Switch Pro, genéricos HID). Com um
+controle conectado, a barra de status mostra `· controle` junto do nome da política.
+
+| Entrada | Efeito |
+|---|---|
+| Analógico esquerdo ↑/↓ | vx (andar); a magnitude é escalada no piso de 0,26 (abaixo de ~0,25 a velstand não anda, ADR-0006) |
+| Analógico esquerdo ←/→ | wz (girar); piso de 1,0 rad/s pelo mesmo motivo |
+| Analógico direito ←/→ | `head_yaw` ±0,9 (olhar para os lados) |
+| Analógico direito ↑/↓ | `neck_pitch` ±0,4 (olhar para cima/baixo) |
+| D-pad ←/→ | vy = ±0,20 (passo lateral, como `Q`/`E`) |
+| `A` / `B` / `X` / `Y` | Bicar · Cambalhota · Chute esq. · Chute dir. |
+| `Back` | Sentar ↔ levantar |
+| `Start` | Pausar / continuar |
+| `L3` (clique esq.) | Zera cabeça e corpo |
+| `R3` (clique dir.) | Reset: pato em pé na origem |
+
+Botões disparam **uma vez por aperto** (detecção de borda); o analógico comanda enquanto
+defletido, com a mesma rampa do teclado, e a zona morta é 0,18. Soltar o analógico devolve o
+canal ao teclado.
+
 ## 4. Painel lateral
 
 - Botões: **Sentar/Levantar**, **Bicar**, **Cambalhota**, **Chutar (esq.)**, **Chutar (dir.)**,

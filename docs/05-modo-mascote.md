@@ -65,12 +65,19 @@ Revisado na ADR-0007, depois que a primeira versão cortou a cabeça do pato.
   `left = round(screen_x − S/2)`. A câmera mira o ponto do chão sob o tronco, deslocado por
   `right × (resto do arredondamento / ppm)` e por `up × ((S/2 − m) / ppm)`. O pato cai na posição
   subpixel exata, e o chão sob ele fica sempre na linha `S − m` da janela.
+- **Limites dependem da profundidade.** A vista 3/4 mapeia `(x, y)` para
+  `center + (x·rx + y·ry)·ppm`: um pato fora da linha `y = 0` (empurrão, queda, cambalhota)
+  desliza na horizontal. Os limites usados pelo piloto automático são recalculados a cada
+  passo com `MascotMapping.x_limits_for_y(y)`; além disso, o enquadramento por quadro prende a
+  janela dentro de `[band.left, band.right]` (`AppController._render_mascot_frame`). Assim o
+  pato pode encostar na borda, mas **nunca sai do monitor**; o arrasto também é limitado à
+  faixa.
 
 ## 4. Entrar no modo mascote
 
 1. Reset do pato (03 §7) em `x = settings.mascot_last_x` (ou 0 na primeira vez), limitado a
-   `[x_min_m, x_max_m]`, `y = 0` e guinada de 0 (olhando para a direita) ou π (olhando para a
-   esquerda), sorteada.
+   `[x_min_m, x_max_m]`, `y = 0` e guinada sorteada em `[-0,7 rad, 0]` — sempre virado para a
+   câmera (azimute 140°, ADR-0007 e ADR-0009).
 2. A bola é estacionada fora de cena: `(0, 50, 0.035)`, com velocidade zerada.
 3. O piloto automático começa em `IDLE`.
 4. Se o pato for parar fora da faixa (cambalhota perto da borda, mudança de resolução), faça um
@@ -82,26 +89,28 @@ Máquina de estados determinística, com `numpy.random.Generator` injetado, test
 
 | Estado | O que faz | Sai para |
 |---|---|---|
-| `IDLE` | Comando zerado por 2–6 s. A cabeça "olha em volta": alvos aleatórios de head_yaw ∈ ±0.6 e head_pitch ∈ ±0.3 rad, trocando a cada 1–2 s, com rampa de 1 rad/s | sorteio: `WALK` 55 %, `SIT` 15 %, `PECK` 15 %, `IDLE` 10 %, `ROLL` 5 % |
-| `WALK` | Escolhe um alvo x a pelo menos 0,5 m de distância, dentro da faixa. Anda com vx ∈ [0.28, 0.30] (sorteado; a velstand não sai do lugar abaixo de ~0,25, veja a ADR-0006). Controle de rumo abaixo. | chegou (\|Δx\| < 0.05 m) → `IDLE` |
-| `TURN` | Gira no lugar até o rumo desejado: `wz = ±1.5` (liga-desliga; abaixo de ~1,0 a velstand parada não gira, ADR-0006) | \|erro\| < 0.15 rad → volta ao estado anterior |
+| `IDLE` | Comando zerado por 2–6 s. A cabeça "olha em volta": alvos aleatórios de head_yaw ∈ ±0.6 e head_pitch ∈ ±0.3 rad, trocando a cada 1–2 s, com rampa de 1 rad/s. Cada olhada abre o bico "um tiquinho" (§6, ADR-0010). Antes de ficar parado, se o erro de rumo passar de 0,5 rad o pato vira para a câmera (ADR-0009) | sorteio: `WALK` 55 %, `SIT` 15 %, `PECK` 15 %, `IDLE` 10 %, `ROLL` 5 %; rumo errado → `TURN` |
+| `WALK` | Escolhe um alvo x a pelo menos 0,5 m de distância, dentro da faixa. Anda com vx ∈ [0.28, 0.30] para a direita e **de ré** com vx ∈ [-0.30, -0.28] para a esquerda, sempre com a frente para a câmera (ADR-0009; a velstand treina vx em [-0.3, 0.3]). Controle de rumo abaixo. | chegou (\|Δx\| < 0.05 m) → `IDLE` |
+| `TURN` | Gira no lugar até o rumo desejado — sempre ~0 rad, a frente para a câmera: `wz = ±1.5` (liga-desliga; abaixo de ~1,0 a velstand parada não gira, ADR-0006) | \|erro\| < 0.15 rad → volta ao estado anterior |
 | `SIT` | Pede `SIT`, fica sentado 5–20 s e pede `STAND` | fim da subida (03 §8) → `IDLE` |
 | `PECK` | Pede `PECK` | fim do episódio → `IDLE` |
 | `ROLL` | Pede `ROLL`, só se tiver ≥ 0,4 m livres à frente e a última cambalhota tiver sido há ≥ 3 min; senão vira `IDLE` | fim → `IDLE` |
 | `RECOVER` | O pato caiu (tronco > 45° da vertical): comando zerado e espera a velstand levantar | em pé por 1 s → `IDLE`; o watchdog (02) reseta depois de 6 s |
 
-**Controle de rumo** (`WALK`, `TURN`), com `yaw` sendo a guinada do tronco:
+**Controle de rumo** (`WALK`, `TURN`), com `yaw` sendo a guinada do tronco. Desde a ADR-0009 o
+pato **nunca vira de costas para a câmera**: `yaw_ref` fica em ~0 rad e o trajeto para a
+esquerda é feito andando de ré (`vx < 0`).
 
 ```
-base    = 0 if target_x > x else π
-yaw_ref = base + clip(-0.8 * y * dir, -0.3, 0.3)     # dir = +1 olhando para +x, -1 para -x; puxa y → 0
+vx_sign = +1 se target_x > x, -1 se à esquerda
+yaw_ref = clip(-0.8 * y * vx_sign, -0.3, 0.3)        # sempre ~0; o sinal de vx inverte a correção de y
 err     = wrap(yaw_ref - yaw)
 wz      = clip(2.0 * err, -1.0, 1.0)
-vx      = 0 if |err| > 0.4 else v_walk               # primeiro vira, depois anda
+vx      = 0 if |err| > 0.4 else v_walk * vx_sign     # primeiro vira, depois anda (de ré à esquerda)
 ```
 
-- Se o pato estiver a menos de 0,15 m do limite e andando para fora, o alvo muda para o lado
-  oposto (vira `TURN`).
+- Se o pato estiver a menos de 0,15 m do limite e se movendo para fora, o alvo muda para o lado
+  oposto (vira `TURN`, que agora só alinha a frente ~0 rad).
 - Os pedidos passam pelas mesmas regras de 03 §8. O piloto automático **nunca** contorna as
   regras.
 - Opção de menu "Piloto automático" desligada: o pato fica em `IDLE` para sempre, mas ainda
@@ -112,13 +121,34 @@ vx      = 0 if |err| > 0.4 else v_walk               # primeiro vira, depois and
 | Gesto | Efeito |
 |---|---|
 | Clique sobre o pato | Reação sorteada: bicar 40 %, sentar/levantar 30 %, cambalhota 15 % (mesmas condições do `ROLL`), olhar para o cursor 15 % (head_yaw para o lado do cursor por 2 s) |
-| Duplo clique | Abre o simulador (§8) |
+| Duplo clique | "Quack! Quack!" — toca o `assets/sounds/quack.mp3` empacotado, via MCI do Windows (`platform/sound.py`), e o bico trabalha no ritmo do som (lip-sync da envolvente do arquivo, ADR-0010) com um leve sacode de cabeça; abrir o simulador é só pela bandeja ou pela roda (§7/§11) |
 | Arrastar (botão esquerdo, > 6 px) | "Pega" o pato: a simulação pausa e a janela segue o cursor na horizontal (e até 200 px para cima, só visual). Ao soltar: reset em pé no x solto (limitado à faixa), com o mesmo sentido em que estava |
-| Botão direito sobre o pato | Mesmo menu da bandeja (§7) |
+| Botão direito sobre o pato | Abre a roda de ações do pato, acima da cabeça (§11) |
 
 "Sobre o pato" = pixel com alfa > 0 na última imagem renderizada.
 
+### O bico (`brain/beak.py`, `SimCore.set_beak`, ADR-0010)
+
+No robô real a mandíbula tem servo próprio (o 15.º servo, `MOUTH_INDEX`, fora de toda política);
+o MJCF empacotado modela a mandíbula como geometria rígida, então o DuckDesk posa os geoms do
+bico em tempo de execução — sem juntas nem atuadores novos, a observação de 61 D e as 14 ações
+ficam intactas. As fontes do upstream que o mascote reproduz:
+
+- **Grasno com bico e sacode de cabeça** (`autonomous.md`: "one to four chirps, with the mouth
+  and a head toss"): a abertura segue a envolvente RMS do próprio `quack.mp3` (o mesmo truque
+  do coro, que mapeia vogal → boca, `robotd/main.rs`).
+- **Olhadas abrem o bico "um tiquinho"** (`robotd/idle_head.rs`): cada olhada do `IDLE` abre
+  `glance_mouth = 0,4 × rng(0,5, 1)`, acompanhando o progresso da olhada.
+- **Bocejo depois de quietude** (`idle_head.rs`/`robotd-params`): após ~45 s sem se mover
+  (`IDLE` ou `SIT`, qualquer movimento ou interação zera o relógio), uma moeda por tick dá um
+  bocejo a cada ~90 s: 3 s de abertura até `yawn_open = 0,6` (abre devagar, sustenta, fecha
+  mais rápido) com a cabeça tombando `yawn_pitch = -0,15 rad`.
+
 ## 7. Menu da bandeja
+
+O menu abaixo é o **QMenu nativo do ícone da bandeja** e não muda: ele é aberto pelo próprio
+`QSystemTrayIcon`, inclusive quando o ícone está na área de **ícones ocultos** da barra. O
+botão direito sobre o **pato** abre a roda de ações (§11), não este menu.
 
 - **Abrir simulador**
 - **Mostrar pato na barra** / **Esconder pato** (alterna)
@@ -135,7 +165,7 @@ Clique simples no ícone: mostra ou esconde o pato. Dica do ícone: "DuckDesk".
 
 ## 8. Voltar ao simulador
 
-Pela bandeja, pelo duplo clique ou pelo menu do botão direito:
+Pela bandeja ou pelo item "Abrir simulador" da roda de ações (§11):
 
 1. esconde a janela do mascote e para o piloto automático;
 2. **não** reseta: o pato continua de onde está no mundo 3D, com a câmera seguindo-o;
@@ -174,3 +204,34 @@ Revisado na ADR-0007.
 4. Os ícones da barra de tarefas e as janelas atrás continuam clicáveis fora do pato.
 5. Ele vira e volta nas bordas, sem sair da tela.
 6. Um app em tela cheia (vídeo no navegador em F11) esconde o pato; ao sair, ele volta.
+
+## 11. Roda de ações do pato (pós-M7)
+
+O botão direito **sobre o pato** não abre mais o menu da bandeja: abre uma roda de ações
+desenhada pelo Qt, logo acima da cabeça. O menu nativo (§7) continua no ícone da bandeja,
+inclusive na área de ícones ocultos. A decisão está na ADR-0008.
+
+- **8 setores**, no sentido horário a partir do topo: **Bicar** · **Cambalhota** ·
+  **Sentar/Levantar** · **Empurrar** · **Pausar/Continuar** · **Piloto ligado/desligado** ·
+  **Abrir simulador** · **Sair**.
+- O **centro** (✕) fecha a roda; `Esc` e um clique fora também fecham, como num menu normal.
+- Rótulos dependentes de estado são recalculados a cada abertura: "Sentar"/"Levantar",
+  "Pausar"/"Continuar", "Piloto ligado"/"Piloto desligado". Ações proibidas pelas regras de
+  03 §8 ("Bicar"/"Cambalhota" sentado ou durante um movimento) aparecem **em cinza** e não
+  disparam; a roda continua aberta, como um item desabilitado de menu nativo.
+- **Posição:** a base da roda fica 10 px acima do topo da cabeça e centrada nela. O ponto vem
+  da máscara alfa do último quadro (`MascotWindow.duck_head_point`), então acompanha a pose;
+  antes do primeiro quadro usa a geometria de §3. A roda é presa à área de trabalho do monitor,
+  sem cobrir a barra de tarefas.
+- **Raio:** `round(0,62 × S)` px lógicos, limitado a 100–128 px. No tamanho Médio (S = 192) o
+  raio é 119 px.
+- **Implementação:** `ui/radial_menu.py` (`RadialMenu`, `WheelAction`); a ligação fica em
+  `AppController.duck_wheel_actions`/`_show_duck_wheel`. Popup do Qt na mesma thread (ADR-0003),
+  sem dependência nova.
+- "Empurrar" usa o mesmo `on_push` do simulador (04 §5): impulso lateral de 2 N por 0,1 s,
+  removido depois de 0,1 s também no modo mascote (o `_apply_push` roda no passo de controle
+  dos dois modos). "Abrir simulador" e "Sair" chamam o mesmo caminho da bandeja (§8).
+
+Prévia (pato e roda renderizados pelo app, sobre um fundo neutro):
+
+![Roda de ações aberta acima da cabeça do pato](relatorios/midia/roda_acoes.png)

@@ -79,6 +79,11 @@ no formato onedir: é possível substituí-las por outra build do Qt, conforme a
 Copyright NumPy Developers. Licenciado sob a BSD 3-Clause License —
 [licenses/BSD-3-Clause.txt](licenses/BSD-3-Clause.txt).
 
+### Som de grasno — fornecido pelo dono do projeto
+
+Arquivo `assets/sounds/quack.mp3` (duplo clique no mascote, 05 §6), fornecido pelo dono do
+projeto. **Atribuição/licença a confirmar** — ver `docs/relatorios/duvidas.md`.
+
 ## Marcas
 
 "Microduck", "Pollen Robotics" e "Hugging Face" são marcas de seus respectivos donos.

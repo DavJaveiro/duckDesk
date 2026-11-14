@@ -1,7 +1,8 @@
 """System tray menu (docs/05 section 7).
 
-Mascot-only items stay disabled until M5; everything else is wired to the
-AppController.
+The native QMenu belongs to the tray icon only (including when it lives in the
+hidden-icons area). Right-clicking the duck itself opens the radial action
+wheel in ``radial_menu.py`` (05 section 11).
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ class Tray(QSystemTrayIcon):
         f = act_open.font()
         f.setBold(True)
         act_open.setFont(f)
-        act_open.triggered.connect(self.ctrl.show_simulator)
+        act_open.triggered.connect(self.ctrl.open_simulator)
 
         self.act_mascot = menu.addAction("Mostrar pato na barra")
         self.act_mascot.triggered.connect(self.ctrl.toggle_mascot)
@@ -53,14 +54,18 @@ class Tray(QSystemTrayIcon):
 
         sub_size = menu.addMenu("Tamanho")
         self._size_actions = {}
+        current = float(self.ctrl.settings["mascot_scale"])
         for label, scale in (("Pequeno", 80 / 120), ("Médio", 1.0), ("Grande", 180 / 120)):
             a = sub_size.addAction(label)
             a.setCheckable(True)
-            a.toggled.connect(lambda on, s=scale: on and self.ctrl.on_size_changed(s))
+            a.setChecked(abs(current - scale) < 0.01)
             self._size_actions[label] = a
-        cur = float(self.ctrl.settings["mascot_scale"])
+        # Connect only after the initial check: setChecked() would otherwise
+        # fire on_size_changed() (and a settings write) during startup.
         for label, scale in (("Pequeno", 80 / 120), ("Médio", 1.0), ("Grande", 180 / 120)):
-            self._size_actions[label].setChecked(abs(cur - scale) < 0.01)
+            self._size_actions[label].toggled.connect(
+                lambda on, s=scale: on and self.ctrl.on_size_changed(s)
+            )
 
         self.act_autostart = menu.addAction("Iniciar com o Windows")
         self.act_autostart.setCheckable(True)
@@ -80,5 +85,6 @@ class Tray(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
 
     def _on_activated(self, reason) -> None:
+        # 05 section 7: a click on the icon shows/hides the duck, not the sim.
         if reason == QSystemTrayIcon.Trigger or reason == QSystemTrayIcon.DoubleClick:
-            self.ctrl.show_simulator()
+            self.ctrl.toggle_mascot()

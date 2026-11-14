@@ -24,7 +24,11 @@ Dois modos no mesmo app:
 | **Mascote** | O pato sai da janela e passa a andar **sozinho sobre a barra de tarefas do Windows**, com fundo transparente, sempre por cima das outras janelas. |
 
 Do simulador, o menu **Modo → Enviar para a barra de tarefas** leva o pato para o modo mascote.
-Pelo ícone na bandeja do sistema (ou com duplo clique no pato), ele volta para o simulador.
+Pelo ícone na bandeja do sistema (ou "Abrir simulador" na roda de ações), ele volta para o
+simulador; o duplo clique no pato o faz grasnar ("Quack! Quack!").
+Com o pato na barra, o **botão direito sobre ele** abre uma roda de ações (bicar, sentar,
+cambalhota, empurrar, pausar, piloto automático, voltar ao simulador e sair); o menu completo
+continua no ícone da bandeja, inclusive na área de ícones ocultos.
 
 > **Projeto não oficial.** Não tem vínculo com a Pollen Robotics nem com a Hugging Face. Usa o
 > software aberto deles nos termos das licenças: veja [docs/07-licencas.md](docs/07-licencas.md).
@@ -93,6 +97,9 @@ uv run python scripts/fetch_assets.py
 ```bash
 uv run duckdesk
 ```
+
+`Ctrl+C` no terminal fecha o aplicativo (passa pela saída normal: salva o
+modo, a geometria da janela e a posição do pato).
 
 ```bash
 uv run pytest

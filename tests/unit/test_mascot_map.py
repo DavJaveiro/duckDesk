@@ -105,6 +105,23 @@ def test_three_quarter_camera_projection(dpr):
     assert mm.world_x(mm.screen_x(0.3, 0.02), 0.02) == pytest.approx(0.3)
 
 
+def test_x_limits_follow_depth():
+    """Depth (y) shifts the duck sideways in the 3/4 view; the world limits
+    must compensate or a push/fall near the edge walks the window off-screen."""
+    band = compute_band(_taskbar_bottom(1.0), _work_area(1.0, TB_H), Dpi(1.0), False)
+    rx, ry = 0.64, 0.77
+    mm = MascotMapping(band, 120, h_m=0.26, right=(rx, ry))
+    lo, hi = mm.x_limits_for_y(0.2)
+    assert lo == pytest.approx(mm.x_min - 0.2 * ry / rx)
+    assert hi == pytest.approx(mm.x_max - 0.2 * ry / rx)
+    # the shifted limit is the same point on screen as the y=0 limit
+    assert mm.screen_x(hi, 0.2) == pytest.approx(mm.screen_x(mm.x_max))
+    assert mm.screen_x(lo, 0.2) == pytest.approx(mm.screen_x(mm.x_min))
+    # negative depth shifts the range the other way
+    lo_back, hi_back = mm.x_limits_for_y(-0.2)
+    assert lo_back > lo and hi_back > hi
+
+
 def test_head_fits_in_window():
     """Regression for the cut-off head: the view must be 1.6x the duck height."""
     band = compute_band(_taskbar_bottom(1.0), _work_area(1.0, TB_H), Dpi(1.0), False)

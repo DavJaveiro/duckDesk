@@ -15,7 +15,8 @@
 │                       ▼                          ▼                       ▼            │
 │              SimulatorView (QMainWindow)   MascotView (janela      TrayIcon           │
 │              renderização 3D offscreen     transparente sobre      (QSystemTrayIcon)  │
-│              → QImage                      a barra de tarefas)                        │
+│              → QImage                      a barra de tarefas)    + RadialMenu       │
+│                                            (roda de ações do pato, 05 §11)            │
 │                                                                                       │
 │                         AppController: modo atual, troca, configurações               │
 └───────────────────────────────────────────────────────────────────────────────────────┘
@@ -33,18 +34,21 @@
 | `policy/validate.py` | Validação de ONNX do usuário (03 §9) | onnxruntime |
 | `brain/commands.py` | Dataclass `DuckCommand` (twist, head, body) e `Request` (`SIT`, `STAND`, `PECK`, `ROLL`, `KICK_L`, `KICK_R`, `RESET`) | — |
 | `brain/autopilot.py` — `Autopilot` | Máquina de estados do mascote (05 §5). Recebe o estado do pato e a faixa de x permitida e devolve comando e pedidos. Sem Qt. | numpy |
+| `brain/beak.py` — `BeakAnimator` | Animação do bico: lip-sync do grasno, olhada "um tiquinho" e bocejo por quietude — porte dos `idle_head.rs`/`robotd-params` do upstream (05 §6, ADR-0010). Sem Qt. | numpy |
 | `brain/keyboard.py` | Mapeia teclas para `DuckCommand` e `Request` (04 §3). Sem Qt: recebe códigos de tecla abstratos. | — |
 | `render/offscreen.py` | Envolve `mujoco.Renderer`: renderização RGB e de segmentação, máscara do pato, superamostragem 2× e saída em array RGBA pré-multiplicado | mujoco |
 | `render/camera.py` | Câmera orbital livre e câmera que segue o pato (simulador) | mujoco |
 | `render/mascot.py` | Câmera ortográfica 3/4 do mascote, altura do pato medida nas malhas, transparência pela profundidade (05 §9, ADR-0007) | mujoco |
 | `ui/simulator_window.py` | `QMainWindow` com menus, viewport, HUD e barra de status (04) | PySide6 |
 | `ui/mascot_window.py` | Janela transparente, sem borda, sempre no topo, sem botão na barra de tarefas; arrastar e clicar (05) | PySide6 |
+| `ui/radial_menu.py` | Roda radial de ações do pato no clique direito, ancorada acima da cabeça (05 §11, ADR-0008) | PySide6 |
 | `ui/tray.py` | Ícone na bandeja e menu (04 §6, 05 §7) | PySide6 |
 | `ui/about.py` | Diálogo "Sobre" com a atribuição e as licenças (07) | PySide6 |
 | `platform/win_taskbar.py` | `SHAppBarMessage(ABM_GETTASKBARPOS)`, estado de ocultação automática, monitor, DPI | ctypes |
 | `platform/win_topmost.py` | Reafirma `HWND_TOPMOST`; detecta app em tela cheia (`SHQueryUserNotificationState`) | ctypes |
 | `platform/autostart.py` | Liga e desliga "Iniciar com o Windows" (`HKCU\...\Run`) | winreg |
-| `settings.py` | Configurações em `%APPDATA%\DuckDesk\settings.json`: tamanho do mascote, último modo, autostart, velocidade | — |
+| `platform/sound.py` | "Quack! Quack!" do duplo clique: toca `assets/sounds/quack.mp3` (empacotado) via MCI `mciSendStringW`, assíncrono por natureza (05 §6) | ctypes/winmm |
+| `settings.py` | Configurações em `%APPDATA%\DuckDesk\settings.json`: tamanho do mascote, último modo, autostart, velocidade. Se o perfil não for gravável, o app continua rodando sem persistir (e os logs caem para `%TEMP%\DuckDesk\logs`) | — |
 | `app.py` — `AppController` | Monta tudo, laço do `QTimer`, troca de modos | todos |
 | `__main__.py` | Ponto de entrada (`duckdesk`). Instância única (`QLockFile` ou mutex nomeado). | app |
 
@@ -138,3 +142,6 @@ resolvedor não mudou `mujoco`, `onnxruntime` ou `numpy`.
 | [0005](adr/0005-janela-mascote-pequena.md) | Janela do mascote pequena que acompanha o pato, em vez de uma faixa da largura da tela |
 | [0006](adr/0006-bam-atraso-velocidades.md) | BAM no commit do upstream, atraso zero e comando de caminhada de 0,3 m/s |
 | [0007](adr/0007-render-mascote.md) | Mascote com câmera ortográfica 3/4, altura medida nas malhas e transparência pela profundidade |
+| [0008](adr/0008-roda-de-acoes-do-mascote.md) | Roda radial de ações no clique direito do pato; menu nativo só no ícone da bandeja |
+| [0009](adr/0009-mascote-sempre-de-frente.md) | Mascote sempre virado para a câmera: esquerda de ré (vx < 0), IDLE/TURN voltam à frente |
+| [0010](adr/0010-bico-articulado-em-runtime.md) | Bico do mascote: pose cinemática dos geoms da mandíbula (sem junta/atuador novos); lip-sync do grasno, olhada e bocejo do upstream |

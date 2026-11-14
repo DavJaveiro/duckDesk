@@ -15,7 +15,7 @@ HTTRANSPARENT = -1
 class MascotWindow(QWidget):
     clicked = Signal(QPoint)  # left click on the duck (widget coords)
     double_clicked = Signal()
-    right_clicked = Signal(QPoint)  # global pos -> controller shows tray menu
+    right_clicked = Signal(QPoint)  # global pos -> controller opens the action wheel
     drag_started = Signal()
     drag_moved = Signal(QPoint)  # global pos
     drag_finished = Signal(QPoint)  # global pos
@@ -42,6 +42,8 @@ class MascotWindow(QWidget):
         style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | 0x08000000)  # WS_EX_NOACTIVATE
 
+        self.setCursor(Qt.OpenHandCursor)  # "can grab" over the duck (05 section 6)
+
     def set_frame(self, bgra: np.ndarray) -> None:
         """(S,S,4) uint8 premultiplied BGRA from MascotRenderer.downsample."""
         h, w, _ = bgra.shape
@@ -64,12 +66,36 @@ class MascotWindow(QWidget):
             return False
         return self._alpha[y, x] > 0
 
+    def duck_head_point(self) -> QPoint | None:
+        """Top-centre of the opaque duck in logical widget coords (05 section 11).
+
+        Uses the alpha mask of the last rendered frame, so the action wheel can
+        sit just above the actual head whatever the pose is. None before the
+        first frame.
+        """
+        if self._alpha is None:
+            return None
+        rows = np.flatnonzero(self._alpha.max(axis=1) > 64)
+        if rows.size == 0:
+            return None
+        scale = self._alpha.shape[0] / max(self.width(), 1)  # physical per logical px
+        top = int(rows[0])
+        # The head is the top ~15 % of the duck; a band there gives its centre x.
+        band = self._alpha[top : top + max(2, int(self._alpha.shape[0] * 0.10))]
+        cols = np.flatnonzero(band.max(axis=0) > 64)
+        if cols.size == 0:
+            return None
+        x = round((int(cols[0]) + int(cols[-1])) / 2.0 / scale)
+        y = round(top / scale)
+        return QPoint(x, y)
+
     # Windows layered windows let clicks fall through alpha=0 pixels natively
     # (05 section 2); if that ever fails the fallback is WM_NCHITTEST->HTTRANSPARENT.
 
     def mousePressEvent(self, ev: QMouseEvent) -> None:
         if ev.button() == Qt.LeftButton:
             self._drag_origin = ev.globalPosition().toPoint()
+            self.setCursor(Qt.ClosedHandCursor)  # grabbed
         elif ev.button() == Qt.RightButton:
             self.right_clicked.emit(ev.globalPosition().toPoint())
 
@@ -84,6 +110,8 @@ class MascotWindow(QWidget):
             self.drag_moved.emit(cur)
 
     def mouseReleaseEvent(self, ev: QMouseEvent) -> None:
+        if ev.button() == Qt.LeftButton:
+            self.setCursor(Qt.OpenHandCursor)
         if ev.button() != Qt.LeftButton or self._drag_origin is None:
             return
         if self._dragging:

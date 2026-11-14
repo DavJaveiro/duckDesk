@@ -106,16 +106,63 @@ def test_heading_control_pulls_y_to_zero():
     assert abs(ys[-1]) < 0.1  # converged
 
 
+def test_leftward_walk_is_a_backwards_moonwalk():
+    """ADR-0009: a target to the left is reached with vx < 0 and yaw ~0, so
+    the duck keeps facing the camera instead of turning its back."""
+    pilot = Autopilot(np.random.default_rng(0), x_range=(-5, 5))
+    mgr = FakeManager()
+    pilot.target_x = -3.0
+    pilot._v_walk = 0.29
+    pilot._launch_left = 0.0
+    pilot.state = AutoState.WALK
+
+    x, y, yaw = 0.0, 0.2, 0.0
+    for _ in range(int(8 / DT)):  # ~2.3 m of travel: still short of the target
+        pilot.update(DT, x, y, yaw, 0.0, mgr)
+        vx, wz = mgr.cmd.twist[0], mgr.cmd.twist[2]
+        yaw += wz * DT
+        x += vx * math.cos(yaw) * DT
+        y += vx * math.sin(yaw) * DT
+    assert mgr.cmd.twist[0] < 0.0  # walking backwards
+    assert x < -1.0  # still progressing toward the left target
+    assert abs(y) < 0.1  # the flipped y-correction converges too
+    assert abs(yaw) < 0.5  # and the nose stays on the camera side
+
+
 def test_edge_flip_turns_around():
     pilot = Autopilot(np.random.default_rng(0), x_range=(-2.5, 2.5))
     mgr = FakeManager()
     pilot._enter_walk(0.0)
     pilot._launch_left = 0.0
+    pilot.target_x = 3.0  # pinned: moving +x toward the right edge
     pilot.state = AutoState.WALK
-    # Park the duck near the right edge facing outward.
+    # Park the duck near the right edge moving outward.
     pilot.update(DT, x=2.45, y=0.0, yaw=0.0, tilt=0.0, mgr=mgr)
     assert pilot.state is AutoState.TURN
     assert pilot.target_x == pilot.x_min
+
+
+def test_edge_flip_moonwalking_left():
+    pilot = Autopilot(np.random.default_rng(0), x_range=(-2.5, 2.5))
+    mgr = FakeManager()
+    pilot.target_x = -3.0  # pinned: moving -x toward the left edge
+    pilot._launch_left = 0.0
+    pilot.state = AutoState.WALK
+    pilot.update(DT, x=-2.45, y=0.0, yaw=0.0, tilt=0.0, mgr=mgr)
+    assert pilot.state is AutoState.TURN
+    assert pilot.target_x == pilot.x_max
+
+
+def test_idle_turns_back_to_face_the_camera():
+    """A duck left rotated (post-walk, push, recover) turns to ~yaw 0 before
+    idling — it should never stand with its back to the viewer (ADR-0009)."""
+    pilot = Autopilot(np.random.default_rng(0))
+    mgr = FakeManager()
+    pilot.update(DT, 0.0, 0.0, math.pi, 0.0, mgr)  # standing backwards
+    assert pilot.state is AutoState.TURN
+    # Converged on the front -> back to the state it came from (IDLE).
+    pilot.update(DT, 0.0, 0.0, 0.05, 0.0, mgr)
+    assert pilot.state is AutoState.IDLE
 
 
 def test_turn_returns_to_previous():

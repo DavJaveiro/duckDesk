@@ -49,6 +49,20 @@ BALL_OFFSET_X = 0.09
 BALL_OFFSET_ABS_Y = 0.042
 BALL_RADIUS = 0.035
 
+# --- beak (ADR-0010) ---------------------------------------------------------
+# The hardware's lower beak is a servo behind a closed-loop linkage
+# (duck-control model.rs: MOUTH_INDEX = 9, Dynamixel id 34). The bundled MJCF
+# models the jaw as rigid geometry inside body `jaw_soft`, so the mouth is
+# posed kinematically — geom_pos/geom_quat/site_pos are runtime model fields,
+# no joint is added -> nq/nu and the 61D obs are untouched. The pivot is the
+# rear-top of the jaw AABB in the jaw_soft body frame and the axis is the
+# body-lateral +y: positive rotation drops the beak tip (verified by probe
+# render against the mesh AABBs).
+BEAK_MESHES = ("jaw", "jaw_soft")
+BEAK_SITE = "mouth_tip"
+BEAK_PIVOT = (-0.004, 0.0, -0.004)
+BEAK_OPEN_RAD = 0.30
+
 
 def load_bam_model(kp_fw: float, vin: float, max_current):
     """Build the BAM M6 model + XL330 voltage-controlled actuator (upstream L49-56)."""
@@ -154,6 +168,30 @@ class SimCore:
         self.joint_qpos_indices, self.joint_qvel_indices = actuator_joint_indices(self.model)
         self.default_pose = DEFAULT_POSE[: self.n_actuators]
 
+        # Beak parts (see module constants): the geoms are unnamed, so they are
+        # found by mesh id; their rest pose is saved for set_beak()/reset().
+        mesh_ids = {mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_MESH, m) for m in BEAK_MESHES}
+        self._beak_geoms = [
+            g
+            for g in range(self.model.ngeom)
+            if self.model.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH
+            and self.model.geom_dataid[g] in mesh_ids
+        ]
+        self._beak_site = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, BEAK_SITE)
+        self._beak_rest = [
+            (self.model.geom_pos[g].copy(), self.model.geom_quat[g].copy())
+            for g in self._beak_geoms
+        ]
+        self._beak_site_rest = (
+            (
+                self.model.site_pos[self._beak_site].copy(),
+                self.model.site_quat[self._beak_site].copy(),
+            )
+            if self._beak_site >= 0
+            else None
+        )
+        self._beak_angle = 0.0
+
         self.reset()
 
     def reset(self, x: float = 0.0, y: float = 0.0, yaw: float = 0.0) -> None:
@@ -174,7 +212,37 @@ class SimCore:
         # its per-step state is only last_ts and q_target — sync them here.
         self.bam_ctrl.last_ts = data.time
         self.bam_ctrl.q_target[:] = self.default_pose
+        self.set_beak(0.0)  # a reset lands the mouth shut too
         mujoco.mj_forward(self.model, data)
+
+    def set_beak(self, open_frac: float) -> None:
+        """Pose the mouth parts, 0 closed .. 1 open (ADR-0010).
+
+        Kinematic — writes geom_pos/geom_quat (and the mouth_tip site): the
+        hardware mouth servo just holds a commanded position too. No new
+        joint, so nq/nu and the policy observation are untouched.
+        """
+        angle = float(np.clip(open_frac, 0.0, 1.0)) * BEAK_OPEN_RAD
+        if abs(angle - self._beak_angle) < 1e-4:
+            return
+        self._beak_angle = angle
+        rot = np.zeros(4)
+        mujoco.mju_axisAngle2Quat(rot, np.array([0.0, 1.0, 0.0]), angle)
+        pivot = np.asarray(BEAK_PIVOT)
+        tmp = np.zeros(3)
+        quat = np.zeros(4)
+        for g, (pos0, quat0) in zip(self._beak_geoms, self._beak_rest):
+            mujoco.mju_rotVecQuat(tmp, pos0 - pivot, rot)
+            self.model.geom_pos[g] = pivot + tmp
+            mujoco.mju_mulQuat(quat, rot, quat0)
+            self.model.geom_quat[g] = quat
+        if self._beak_site_rest is not None:
+            pos0, quat0 = self._beak_site_rest
+            mujoco.mju_rotVecQuat(tmp, pos0 - pivot, rot)
+            self.model.site_pos[self._beak_site] = pivot + tmp
+            mujoco.mju_mulQuat(quat, rot, quat0)
+            self.model.site_quat[self._beak_site] = quat
+        mujoco.mj_forward(self.model, self.data)
 
     def step_control(self, targets: np.ndarray) -> None:
         """One 50 Hz control step: write motor targets, then DECIMATION physics

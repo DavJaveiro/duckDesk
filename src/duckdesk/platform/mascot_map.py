@@ -101,6 +101,17 @@ class MascotMapping:
     def clamp_x(self, x_m: float) -> float:
         return min(max(x_m, self.x_min), self.x_max)
 
+    def x_limits_for_y(self, y_m: float) -> tuple[float, float]:
+        """World-x limits that keep the window inside the band at depth ``y``.
+
+        The 3/4 camera maps the ground point to ``center + (x*rx + y*ry)*ppm``,
+        so a duck that left the y = 0 line is shifted sideways on screen. This
+        solves the same band edges for x with the current y (05 section 3,
+        ADR-0007); the result is ``[x_min, x_max]`` shifted by -y*ry/rx.
+        """
+        shift = y_m * self.ry / self.rx
+        return self.x_min - shift, self.x_max - shift
+
     def window_top(self, floor_margin_px: int | None = None) -> float:
         m = floor_margin_px if floor_margin_px is not None else round(MARGIN_FRAC * self.S)
         return self.band.floor_y - self.S + m

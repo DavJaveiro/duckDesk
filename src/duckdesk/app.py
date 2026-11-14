@@ -8,6 +8,8 @@ rendering never blocks physics and never runs more often than needed.
 from __future__ import annotations
 
 import logging
+import os
+import signal
 import sys
 import time
 from collections import deque
@@ -16,12 +18,14 @@ from pathlib import Path
 
 import mujoco
 import numpy as np
-from PySide6.QtCore import QByteArray, QObject, Qt, QTimer
+from PySide6.QtCore import QByteArray, QObject, QPoint, Qt, QTimer
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from duckdesk import assets
+from duckdesk.brain.beak import BeakAnimator
 from duckdesk.brain.commands import Request
+from duckdesk.brain.gamepad_map import GamepadMapper
 from duckdesk.brain.keyboard import AppIntent, KeyboardMapper
 from duckdesk.policy.manager import PolicyManager
 from duckdesk.policy.validate import validate_user_onnx
@@ -31,6 +35,7 @@ from duckdesk.settings import Settings
 from duckdesk.sim.clock import SimClock
 from duckdesk.sim.core import CONTROL_DT, SimCore
 from duckdesk.sim.watchdog import Watchdog
+from duckdesk.ui.radial_menu import RadialMenu, WheelAction, radius_for_duck
 
 ROBOT_DIR = assets.assets_dir() / "upstream" / "microduck_rl" / "robot" / "microduck"
 SCENE = ROBOT_DIR / "scene_ball.xml"
@@ -46,15 +51,41 @@ INSTANCE_NAME = "duckdesk-instance"
 log = logging.getLogger("duckdesk.app")
 
 
-def setup_logging(settings: Settings) -> Path:
-    """Rotating log: %APPDATA%/DuckDesk/logs/duckdesk.log, 5 x 1 MB."""
-    log_dir = settings.path.parent / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    target = log_dir / "duckdesk.log"
-    handler = RotatingFileHandler(target, maxBytes=1_048_576, backupCount=5, encoding="utf-8")
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+def setup_logging(settings: Settings) -> Path | None:
+    """Rotating log: %APPDATA%/DuckDesk/logs/duckdesk.log, 5 x 1 MB.
+
+    A read-only profile (restricted sandbox, antivirus lock) must not stop the
+    app from starting: fall back to %TEMP%/DuckDesk/logs, then to stderr only.
+    Returns the log file path, or None when only stderr was available.
+    """
+    candidates = [settings.path.parent / "logs"]
+    temp = os.environ.get("TEMP") or os.environ.get("TMP")
+    if temp:
+        candidates.append(Path(temp) / "DuckDesk" / "logs")
+    target: Path | None = None
+    handler: logging.Handler | None = None
+    for log_dir in candidates:
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            candidate = log_dir / "duckdesk.log"
+            handler = RotatingFileHandler(
+                candidate, maxBytes=1_048_576, backupCount=5, encoding="utf-8"
+            )
+        except OSError:
+            continue
+        target = candidate
+        break
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     root = logging.getLogger()
     root.setLevel(logging.INFO)
+    if handler is None:
+        fallback = logging.StreamHandler()
+        fallback.setFormatter(formatter)
+        root.addHandler(fallback)
+        log.warning("nenhum diretório de log gravável; log apenas no console")
+        return None
+    handler.setFormatter(formatter)
     root.addHandler(handler)
     return target
 
@@ -82,7 +113,7 @@ def listen_for_raise(controller: AppController, name: str = INSTANCE_NAME) -> QL
             conn = server.nextPendingConnection()
             conn.waitForReadyRead(200)
             conn.deleteLater()
-            controller.show_simulator()
+            controller.open_simulator()
 
     server.newConnection.connect(_on_conn)
     return server
@@ -99,6 +130,7 @@ class AppController(QObject):
         self.clock = SimClock(speed=float(self.settings["speed"]))
         self.watchdog = Watchdog()
         self.keyboard = KeyboardMapper()
+        self.gamepad = GamepadMapper()
         self.camera = CameraController(self.sim.model)
         self.renderer = OffscreenRenderer(self.sim.model, 960, 600)
 
@@ -107,6 +139,7 @@ class AppController(QObject):
         self._push_left = 0
         self.mascot = None  # MascotWindow while in mascot mode
         self.mascot_map = None
+        self._radial_menu: RadialMenu | None = None  # duck right-click wheel (05 §11)
         self._mascot_renderer = None
         self._last_mascot_frame = 0.0
         self._dragging_duck = False
@@ -117,6 +150,7 @@ class AppController(QObject):
         self._mascot_fps_cap = 1.0 / 30.0 - TICK_MS / 2000.0
         self._duck_h_m: float | None = None  # measured on first mascot entry (ADR-0007)
         self.autopilot = None
+        self.beak = BeakAnimator()  # mouth servo animation (ADR-0010)
         self._rng = np.random.default_rng()
         self._vel_hist: deque = deque(maxlen=int(1.0 / CONTROL_DT))
         self._frame_times: deque = deque(maxlen=120)
@@ -158,6 +192,13 @@ class AppController(QObject):
         self._last = now
         for _ in range(n):
             cmd, requests, intents = self.keyboard.poll(CONTROL_DT)
+            gp_twist, gp_head, gp_req, gp_int = self.gamepad.poll(CONTROL_DT)
+            if gp_twist is not None:
+                cmd.twist = gp_twist
+            if gp_head is not None:
+                self._head[:] = gp_head
+            requests += gp_req
+            intents += gp_int
             self._handle_intents(intents)
             for req in requests:
                 self.on_request(req)
@@ -204,7 +245,7 @@ class AppController(QObject):
             ts = list(self._frame_times)
             fps = (len(ts) - 1) / max(ts[-1] - ts[0], 1e-9)
         self.window.set_status(
-            self.mgr.walk_policy_name,
+            self.mgr.walk_policy_name + (" · controle" if self.gamepad.connected else ""),
             vel,
             f"render {fps:4.1f} fps",
             f"atrasados {self.clock.discarded}",
@@ -280,6 +321,11 @@ class AppController(QObject):
             if self._push_left <= 0:
                 self.sim.data.xfrc_applied[self.sim.trunk_base_id, 0:3] = 0.0
 
+    def _clear_push(self) -> None:
+        """Drop a pending push force (e.g. when leaving mascot mode)."""
+        self._push_left = 0
+        self.sim.data.xfrc_applied[self.sim.trunk_base_id, 0:3] = 0.0
+
     # --- camera ------------------------------------------------------------------
 
     def on_camera_drag(self, action, dx: float, dy: float, h: float) -> None:
@@ -318,6 +364,17 @@ class AppController(QObject):
         self.window.activateWindow()
         self.window.raise_()
 
+    def open_simulator(self) -> None:
+        """Tray 'Abrir simulador' (05 section 8): leave mascot mode first.
+
+        Plain show_simulator() while the mascot is up raises a window whose
+        viewport never renders — _tick keeps running the mascot loop because
+        self.mascot is not None, so the simulator looks frozen."""
+        if self.mascot is not None:
+            self.exit_mascot()
+        else:
+            self.show_simulator()
+
     def on_close_request(self) -> bool:
         """True -> hide instead of quit (tray keeps the app alive)."""
         if not self._tray_active:
@@ -336,6 +393,14 @@ class AppController(QObject):
         self.settings["autopilot"] = on
         if self.autopilot is not None:
             self.autopilot.enabled = on
+
+    def on_toggle_autopilot(self) -> None:
+        """Toggle autopilot from the duck wheel, keeping the tray check in sync."""
+        on = not bool(self.settings["autopilot"])
+        if self._tray_active:
+            self.tray.act_autopilot.setChecked(on)  # toggled -> on_autopilot_toggled
+        else:
+            self.on_autopilot_toggled(on)
 
     def on_size_changed(self, scale: float) -> None:
         self.settings["mascot_scale"] = scale
@@ -360,6 +425,10 @@ class AppController(QObject):
         AboutDialog(self.window).exec()
 
     def on_quit(self) -> None:
+        self._close_duck_wheel()
+        from duckdesk.platform import sound
+
+        sound.close()  # release the MCI quack alias
         self.timer.stop()
         if self.mascot is not None:
             self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
@@ -422,21 +491,19 @@ class AppController(QObject):
         self._mascot_band()
         mm = self.mascot_map
         last_x = mm.clamp_x(float(self.settings["mascot_last_x"]))
-        yaw = 0.0 if self._rng.random() < 0.5 else np.pi
-        self.sim.reset()
-        jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
-        adr = self.sim.model.jnt_qposadr[jid]
-        self.sim.data.qpos[adr] = last_x
-        self.sim.data.qpos[adr + 1] = 0.0
-        mujoco.mj_forward(self.sim.model, self.sim.data)
+        # Always spawn facing the viewer: the camera sits at azimuth 140, so
+        # the duck's front reads best in the yaw range [-0.7, 0] (ADR-0009).
+        yaw = -0.7 * float(self._rng.random())
         self.mgr.request(Request.RESET, self.sim)
+        self.sim.data.qpos[self.sim.trunk_qpos_adr] = last_x
+        self._place_yaw(yaw)  # quaternion + mj_forward
         self.sim.park_ball()
-        self._place_yaw(yaw)
 
         self.autopilot = Autopilot(
             np.random.default_rng(),
             x_range=(mm.x_min, mm.x_max),
             enabled=bool(self.settings["autopilot"]),
+            beak=self.beak,
         )
         screen = self.window.screen()
         # 05 section 9: the renderer draws at 2x this and box-filters down
@@ -462,6 +529,10 @@ class AppController(QObject):
 
     def exit_mascot(self) -> None:
         """05 section 8: no reset — the duck continues where it is."""
+        self._close_duck_wheel()
+        self._clear_push()
+        self.beak.stop()
+        self.sim.set_beak(0.0)  # mouth shut again in the simulator
         self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
         if self.mascot is not None:
             self.mascot.hide()
@@ -472,6 +543,7 @@ class AppController(QObject):
         self._mascot_renderer = None
         self.autopilot = None
         self.keyboard = KeyboardMapper()  # command starts at zero (05 section 8)
+        self.gamepad = GamepadMapper()  # ... and so do held pad buttons
         self.settings["last_mode"] = "simulator"
         if self._tray_active:
             self.tray.act_mascot.setText("Mostrar pato na barra")
@@ -487,11 +559,65 @@ class AppController(QObject):
     def _wire_mascot(self) -> None:
         w = self.mascot
         w.clicked.connect(self._mascot_click)
-        w.double_clicked.connect(self.exit_mascot)
-        w.right_clicked.connect(lambda p: self.tray.contextMenu().popup(p))
+        w.double_clicked.connect(self._mascot_double_click)  # "Quack! Quack!" (05 §6)
+        w.right_clicked.connect(self._show_duck_wheel)  # wheel, not the tray menu (05 §11)
         w.drag_started.connect(self._mascot_drag_start)
         w.drag_moved.connect(self._mascot_drag_move)
         w.drag_finished.connect(self._mascot_drag_finish)
+
+    # --- duck action wheel (05 section 11) -----------------------------------
+
+    def _duck_head_global(self) -> QPoint:
+        """Global top-centre of the duck's head; the wheel hangs just above it."""
+        mascot = self.mascot
+        if mascot is None:
+            return QPoint()
+        local = mascot.duck_head_point()
+        if local is None:  # before the first frame: standing layout of 05 section 3
+            mm = self.mascot_map
+            local = QPoint(
+                mascot.width() // 2,
+                round(mm.S - self._mascot_margin - mm.S / 1.6),
+            )
+        return mascot.mapToGlobal(local)
+
+    def duck_wheel_actions(self) -> list[WheelAction]:
+        """Sectors clockwise from 12 o'clock; labels reflect the current state."""
+        seated, busy = self.mgr.seated, self.mgr.busy
+        can_act = not seated and not busy
+        autopilot_on = bool(self.settings["autopilot"])
+        return [
+            WheelAction("Bicar", lambda: self.on_request(Request.PECK), enabled=can_act),
+            WheelAction("Cambalhota", lambda: self.on_request(Request.ROLL), enabled=can_act),
+            WheelAction("Levantar" if seated else "Sentar", self.on_toggle_sit, enabled=not busy),
+            WheelAction("Empurrar", self.on_push),
+            WheelAction("Continuar" if self.clock.paused else "Pausar", self.on_toggle_pause),
+            WheelAction(
+                "Piloto\nligado" if autopilot_on else "Piloto\ndesligado",
+                self.on_toggle_autopilot,
+            ),
+            WheelAction("Abrir\nsimulador", self.exit_mascot),
+            WheelAction("Sair", self.on_quit),
+        ]
+
+    def _show_duck_wheel(self, _global_pos: QPoint) -> None:
+        """Right click on the duck: radial wheel above its head, not the tray menu."""
+        if self.mascot is None:
+            return
+        if self._radial_menu is None:
+            self._radial_menu = RadialMenu()
+        self._radial_menu.set_actions(self.duck_wheel_actions(), radius_for_duck(self.mascot_map.S))
+        self._radial_menu.popup_above(self._duck_head_global())
+
+    def _close_duck_wheel(self) -> None:
+        """05 section 11: hide the wheel; it is reused, never deleted.
+
+        Never deleteLater() here: destroying this Python-subclassed popup while
+        its Qt grab/event-filter state unwinds corrupts the interpreter —
+        duckdesk.app.__dict__ was emptied, every _tick then died on NameError
+        and the app froze (repro: scripts/probe_wheel_death.py)."""
+        if self._radial_menu is not None:
+            self._radial_menu.hide()  # == close(): WA_DeleteOnClose is not set
 
     def _tick_mascot(self, now: float) -> None:
         n = self.clock.steps_due(now - self._last)
@@ -500,23 +626,29 @@ class AppController(QObject):
             return  # paused while dragged or a fullscreen app holds the screen
         for _ in range(n):
             if self.autopilot is not None:
-                x, _, _ = self.sim.trunk_pos()
+                x, y = (float(v) for v in self.sim.trunk_pos()[:2])
+                # The 3/4 camera shifts the duck sideways with depth, so the
+                # usable x range depends on y (05 section 3).
+                self.autopilot.x_min, self.autopilot.x_max = self.mascot_map.x_limits_for_y(y)
                 self.autopilot.update(
                     CONTROL_DT,
                     x,
-                    self.sim.trunk_pos()[1],
+                    y,
                     self.sim.trunk_yaw(),
                     self.sim.trunk_tilt(),
                     self.mgr,
                 )
             targets = self.mgr.step(self.sim)
             self.sim.step_control(targets)
+            self.sim.set_beak(self.beak.mouth)  # beak pose (ADR-0010)
+            self._apply_push(CONTROL_DT)  # same 0.1 s push as the simulator (04 §5)
             event = self.watchdog.check(self.sim, CONTROL_DT)
             if event:
                 self.mgr.request(Request.RESET, self.sim)
-        # keep the duck inside the band (05 section 4)
-        x = float(self.sim.trunk_pos()[0])
-        if x < self.mascot_map.x_min - 0.05 or x > self.mascot_map.x_max + 0.05:
+        # keep the duck inside the band (05 section 4), depth-aware (3/4 camera)
+        x, y = (float(v) for v in self.sim.trunk_pos()[:2])
+        x_min, x_max = self.mascot_map.x_limits_for_y(y)
+        if x < x_min - 0.05 or x > x_max + 0.05:
             self._soft_clamp()
 
         # 30 fps always: below that the gait reads as stutter (ADR-0007).
@@ -526,13 +658,16 @@ class AppController(QObject):
         self._render_mascot_frame()
 
     def _soft_clamp(self) -> None:
-        """Soft reset 0.1 m inside the nearest band edge (05 section 4)."""
+        """Soft reset 0.1 m inside the nearest band edge (05 section 4).
+
+        The limits come from the current depth: in the 3/4 view, y shifts the
+        duck sideways, so the world edge is not at the y = 0 value.
+        """
+        mm = self.mascot_map
         x = float(self.sim.trunk_pos()[0])
-        inside = self.mascot_map.x_min + 0.1 if x < 0 else self.mascot_map.x_max - 0.1
-        if x < self.mascot_map.x_min:
-            inside = self.mascot_map.x_min + 0.1
-        else:
-            inside = self.mascot_map.x_max - 0.1
+        y = float(self.sim.trunk_pos()[1])
+        x_min, x_max = mm.x_limits_for_y(y)
+        inside = x_min + 0.1 if x < x_min else x_max - 0.1
         jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
         adr = self.sim.model.jnt_qposadr[jid]
         self.sim.data.qpos[adr] = inside
@@ -544,10 +679,16 @@ class AppController(QObject):
         x, y, _ = (float(v) for v in self.sim.trunk_pos())
         ground = np.array([x, y, 0.0])  # ground point under the trunk
         exact = mm.screen_x(x, y)  # logical px of the duck on screen
-        left = round(exact - mm.S / 2)  # windows sit on whole pixels
-        # Shift the camera by the rounding remainder so the duck lands at its
-        # exact sub-pixel position inside the window: the window steps in
-        # whole pixels, the image compensates, nothing trembles (ADR-0005).
+        # Hard clamp to the band: with the 3/4 camera, depth (pushes, falls,
+        # rolls) shifts the duck sideways. The window must never leave the
+        # monitor, so the duck is pinned at the edge instead.
+        band = mm.band
+        draw = min(max(exact, band.left + mm.S / 2), band.right - mm.S / 2)
+        left = round(draw - mm.S / 2)  # windows sit on whole pixels
+        # Shift the camera by the rounding remainder (and by any clamping) so
+        # the duck lands at the intended position inside the window: the window
+        # steps in whole pixels, the image compensates, nothing trembles
+        # (ADR-0005).
         delta_px = (left + mm.S / 2) - exact
         lookat = (
             ground
@@ -561,9 +702,17 @@ class AppController(QObject):
             self.mascot.move(left, top)
         self.mascot.set_frame(frame)
 
+    def _mascot_double_click(self) -> None:
+        """The bundled "Quack! Quack!" plus the beak working (05 §6, ADR-0010)."""
+        from duckdesk.platform.sound import quack_quack
+
+        quack_quack()
+        self.beak.quack()
+
     def _mascot_click(self, _pos) -> None:
         if self.autopilot is None:
             return
+        self.autopilot.poke()  # any motion wakes it (idle_head.rs)
         r = float(self._rng.random())
         if r < 0.40:
             self.on_request(Request.PECK)
@@ -577,25 +726,27 @@ class AppController(QObject):
 
     def _mascot_drag_start(self) -> None:
         self._dragging_duck = True
+        if self.autopilot is not None:
+            self.autopilot.poke()
 
     def _mascot_drag_move(self, pos) -> None:
         """Window follows the cursor horizontally, up to 200 px up (05 section 6)."""
         mm = self.mascot_map
         base_top = round(mm.window_top(self._mascot_margin))
         self._drag_lift = max(0, min(200, base_top - pos.y()))
-        self.mascot.move(pos.x() - mm.S // 2, base_top - self._drag_lift)
+        left = pos.x() - mm.S // 2
+        # A drag must not park the window off-screen; clamp to the taskbar band.
+        left = min(max(left, round(mm.band.left)), round(mm.band.right) - mm.S)
+        self.mascot.move(left, base_top - self._drag_lift)
 
     def _mascot_drag_finish(self, pos) -> None:
         self._dragging_duck = False
         self._drag_lift = 0
         x = self.mascot_map.clamp_x(self.mascot_map.world_x(pos.x()))
-        self.sim.reset()
-        jid = mujoco.mj_name2id(self.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
-        adr = self.sim.model.jnt_qposadr[jid]
-        self.sim.data.qpos[adr] = x
-        self.sim.data.qpos[adr + 1] = 0.0
-        mujoco.mj_forward(self.sim.model, self.sim.data)
+        yaw = self.sim.trunk_yaw()  # land facing the same way (05 section 6)
         self.mgr.request(Request.RESET, self.sim)
+        self.sim.data.qpos[self.sim.trunk_qpos_adr] = x
+        self._place_yaw(yaw)  # quaternion + mj_forward
         self.sim.park_ball()
 
     def on_taskbar_timer(self) -> None:
@@ -631,12 +782,20 @@ def mujoco_flag(name: str):
     return getattr(mujoco.mjtVisFlag, f"mjVIS_{name}")
 
 
+def _install_sigint(controller) -> None:
+    """Ctrl+C in the launching terminal quits through on_quit (saves last_mode
+    / geometry / closes the MCI alias). The Python handler runs as soon as
+    the interpreter wakes — the 8 ms sim timer guarantees that."""
+    signal.signal(signal.SIGINT, lambda _sig, _frame: controller.on_quit())
+
+
 def run(argv=None) -> int:
     app = QApplication(argv or sys.argv)
     app.setQuitOnLastWindowClosed(False)  # tray keeps it alive
     if notify_existing_instance():
         return 0  # second launch: existing instance comes forward
     controller = AppController(app)
+    _install_sigint(controller)
     controller.log_file = setup_logging(controller.settings)
     log.info("DuckDesk iniciando (modo=%s)", controller.settings["last_mode"])
     controller._instance_server = listen_for_raise(controller)

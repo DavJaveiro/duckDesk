@@ -9,16 +9,20 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from duckdesk import assets
 from duckdesk.app import AppController
 from duckdesk.brain.commands import Request
+from duckdesk.ui.radial_menu import wheel_topleft
 
 
 def _gl_available() -> bool:
@@ -169,6 +173,232 @@ def test_mascot_frame_produces_alpha(ctrl):
     assert ctrl.mascot._alpha is not None
     assert ctrl.mascot._alpha.max() == 255  # duck pixels present
     assert ctrl.mascot._alpha.min() == 0  # transparent background
+    ctrl.exit_mascot()
+
+
+# --- duck action wheel (05 section 11, ADR-0008) ------------------------------
+
+
+def test_duck_head_point_is_above_the_feet(ctrl):
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    point = ctrl.mascot.duck_head_point()
+    assert point is not None
+    assert 0 < point.x() < ctrl.mascot.width()  # head is inside the window
+    assert 0 < point.y() < ctrl.mascot.height() // 2  # head is in the upper half
+    ctrl.exit_mascot()
+
+
+def test_duck_right_click_opens_the_wheel_above_the_head(ctrl):
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    head = ctrl._duck_head_global()
+    ctrl.mascot.right_clicked.emit(QPoint(head.x(), head.y()))
+    menu = ctrl._radial_menu
+    assert menu is not None and menu.isVisible()
+    assert [a.label for a in menu.actions] == [
+        "Bicar",
+        "Cambalhota",
+        "Sentar",
+        "Empurrar",
+        "Pausar",
+        "Piloto\nligado",
+        "Abrir\nsimulador",
+        "Sair",
+    ]
+    # The wheel is anchored above the head and centred on it, clamped to the screen.
+    expected = wheel_topleft(head, menu.radius, ctrl.mascot.screen().availableGeometry())
+    assert menu.pos() == expected
+    ctrl.exit_mascot()
+    assert not menu.isVisible()  # hidden, kept for reuse — never deleted
+
+
+def test_duck_wheel_labels_and_enabled_state_track_the_duck(ctrl):
+    ctrl.enter_mascot()
+    actions = ctrl.duck_wheel_actions()
+    assert actions[0].enabled and actions[1].enabled  # in pé: Bicar/Cambalhota liberados
+    ctrl.on_request(Request.SIT)
+    actions = ctrl.duck_wheel_actions()
+    assert actions[2].label == "Levantar"
+    assert not actions[0].enabled and not actions[1].enabled  # sentado: regras de 03 §8
+    ctrl.on_toggle_pause()
+    assert ctrl.duck_wheel_actions()[4].label == "Continuar"
+    ctrl.on_toggle_autopilot()
+    assert ctrl.duck_wheel_actions()[5].label == "Piloto\ndesligado"
+    assert ctrl.settings["autopilot"] is False
+    assert not ctrl.tray.act_autopilot.isChecked()  # tray menu stays in sync
+    ctrl.on_toggle_autopilot()
+    assert ctrl.tray.act_autopilot.isChecked()
+    ctrl.exit_mascot()
+
+
+def test_duck_wheel_closes_on_exit_mascot(ctrl):
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    ctrl._show_duck_wheel(QPoint())
+    assert ctrl._radial_menu is not None and ctrl._radial_menu.isVisible()
+    menu = ctrl._radial_menu
+    ctrl.exit_mascot()
+    assert ctrl._radial_menu is menu  # hidden and kept for reuse, never deleted
+    assert not menu.isVisible()
+
+
+def test_wheel_open_simulator_sector_leaves_a_healthy_app(ctrl, qapp):
+    """Regression for the wheel->simulator freeze: clicking 'Abrir simulador'
+    must hide the wheel, leave mascot mode, show the live simulator and keep
+    every duckdesk module intact — a deleteLater() on this popup used to gut
+    duckdesk.app.__dict__, after which every _tick died on NameError."""
+    import math
+
+    import duckdesk.app as appmod
+    from duckdesk.ui.radial_menu import sector_index_at
+
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    ctrl._show_duck_wheel(QPoint())
+    menu = ctrl._radial_menu
+    index = next(i for i, a in enumerate(menu.actions) if "simulador" in a.label)
+    # Real click at the sector centre, like the user does (05 section 11).
+    angle = math.radians(-90.0 + index * 360.0 / len(menu.actions))
+    r = (menu.hub_radius + menu.radius) / 2.0
+    point = QPoint(
+        round(menu.width() / 2 + r * math.cos(angle)),
+        round(menu.height() / 2 + r * math.sin(angle)),
+    )
+    assert (
+        sector_index_at(
+            point.x() - menu.width() / 2,
+            point.y() - menu.height() / 2,
+            len(menu.actions),
+            menu.hub_radius,
+            menu.radius,
+        )
+        == index
+    )
+    QTest.mouseClick(menu, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point)
+    assert not menu.isVisible()  # closed before the callback runs
+    qapp.processEvents()  # the deferred action fires here
+    assert ctrl.mascot is None
+    assert ctrl.settings["last_mode"] == "simulator"
+    assert ctrl._radial_menu is menu  # reused, never deleted
+    assert len(appmod.__dict__) > 50  # module not gutted
+    for _ in range(3):  # the timer loop stays healthy
+        ctrl._tick()
+
+
+def test_tray_open_simulator_leaves_mascot_mode(ctrl):
+    """Tray 'Abrir simulador' must exit mascot mode, not just raise the
+    window: _tick keeps running the mascot loop while self.mascot lives, so
+    the raised simulator viewport never renders and the window looks frozen
+    (user report: opening the simulator hangs and the duck closes)."""
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    assert ctrl.mascot is not None
+    ctrl.open_simulator()
+    assert ctrl.mascot is None
+    assert ctrl.settings["last_mode"] == "simulator"
+
+
+def test_open_simulator_without_mascot_just_shows_the_window(ctrl):
+    ctrl.open_simulator()
+    assert ctrl.mascot is None
+    assert ctrl.settings["last_mode"] == "simulator"
+
+
+# --- mascot stays inside the monitor (05 sections 3 and 10) ------------------
+
+
+def _trunk_adr(ctrl) -> int:
+    import mujoco
+
+    jid = mujoco.mj_name2id(ctrl.sim.model, mujoco.mjtObj.mjOBJ_JOINT, "trunk_base_freejoint")
+    return int(ctrl.sim.model.jnt_qposadr[jid])
+
+
+def test_push_force_is_cleared_in_mascot_mode(ctrl):
+    """Wheel -> Empurrar must expire after 0.1 s like in the simulator; a
+    leftover lateral force used to send the duck flying off the monitor."""
+    ctrl.enter_mascot()
+    ctrl.on_push()
+    assert ctrl.sim.data.xfrc_applied[ctrl.sim.trunk_base_id, 1] != 0.0
+    ctrl._tick_mascot(time.perf_counter() + 1.0)  # enough 20 ms control steps
+    assert ctrl.sim.data.xfrc_applied[ctrl.sim.trunk_base_id, 1] == 0.0
+    ctrl.exit_mascot()
+
+
+def test_mascot_window_stays_inside_the_band(ctrl):
+    """Even with a large depth offset (push/fall/roll), the window is clamped
+    to the taskbar band instead of leaving the monitor."""
+    import mujoco
+
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    adr = _trunk_adr(ctrl)
+    band = ctrl.mascot_map.band
+    for depth in (2.0, -2.0):
+        ctrl.sim.data.qpos[adr + 1] = depth
+        mujoco.mj_forward(ctrl.sim.model, ctrl.sim.data)
+        ctrl._render_mascot_frame()
+        assert ctrl.mascot.x() >= round(band.left)
+        assert ctrl.mascot.x() + ctrl.mascot.width() <= round(band.right)
+    ctrl.exit_mascot()
+
+
+def test_mascot_drag_does_not_leave_the_screen(ctrl):
+    ctrl.enter_mascot()
+    band = ctrl.mascot_map.band
+    ctrl._mascot_drag_move(QPoint(-500, 900))
+    assert ctrl.mascot.x() >= round(band.left)
+    ctrl._mascot_drag_move(QPoint(5000, 900))
+    assert ctrl.mascot.x() + ctrl.mascot.width() <= round(band.right)
+    ctrl._drag_lift = 0
+    ctrl.exit_mascot()
+
+
+def test_mascot_drag_finish_lands_where_dropped(ctrl):
+    """request(RESET) runs sim.reset() internally; the drop x must be written
+    AFTER it or the duck snaps back to the band centre."""
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    band = ctrl.mascot_map.band
+    target_px = band.left + 0.25 * (band.right - band.left)
+    ctrl._mascot_drag_finish(QPoint(round(target_px), 900))
+    expected = ctrl.mascot_map.clamp_x(ctrl.mascot_map.world_x(target_px))
+    assert float(ctrl.sim.trunk_pos()[0]) == pytest.approx(expected)
+    ctrl.exit_mascot()
+
+
+def test_mascot_drag_finish_keeps_the_facing(ctrl):
+    """05 section 6: the duck lands facing the same way it was dragged."""
+    import math
+
+    ctrl.enter_mascot()
+    ctrl._tick_mascot(time.perf_counter() + 1.0)
+    ctrl._place_yaw(math.pi)  # face the other way before the drop
+    ctrl._mascot_drag_finish(QPoint(round(ctrl.mascot_map.band.center), 900))
+    assert ctrl.sim.trunk_yaw() == pytest.approx(math.pi)
+    ctrl.exit_mascot()
+
+
+def test_enter_mascot_honours_last_x(ctrl):
+    """mascot_last_x was wiped by the same ordering bug: the duck always
+    spawned at the band centre regardless of where it was left."""
+    ctrl.settings["mascot_last_x"] = 0.25  # metres, well inside the band
+    ctrl.enter_mascot()
+    expected = ctrl.mascot_map.clamp_x(0.25)
+    assert float(ctrl.sim.trunk_pos()[0]) == pytest.approx(expected)
+    ctrl.exit_mascot()
+
+
+def test_double_click_quacks_and_stays_in_mascot(ctrl, monkeypatch):
+    """05 section 6: double-click says "Quack! Quack!"; opening the simulator
+    is the tray menu's job only."""
+    calls = []
+    monkeypatch.setattr("duckdesk.platform.sound.quack_quack", lambda: calls.append(1))
+    ctrl.enter_mascot()
+    ctrl.mascot.double_clicked.emit()
+    assert calls == [1]
+    assert ctrl.mascot is not None  # still in mascot mode
     ctrl.exit_mascot()
 
 

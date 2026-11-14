@@ -28,3 +28,55 @@ Itens que **não** estavam nesta lista e foram corrigidos na revisão:
   `S = 1.6 × H`.
 - **PRs encadeados:** os PRs #13–#18 foram mesclados uns nos outros e a `main` ficou no M1. Eles
   foram mesclados na `main` na revisão. Daqui para frente, **todo PR aponta para `main`**.
+- **Pato saindo do monitor (rodada da roda de ações):** o botão "Empurrar" da roda aplicava
+  `xfrc_applied` e o `_apply_push` só rodava no laço do simulador, então no modo mascote a força
+  lateral de 2 N ficava aplicada para sempre e o pato deslizava para fora da tela. Corrigido:
+  o passo de controle do mascote também expira o empurrão em 0,1 s e o `exit_mascot` limpa a
+  força. Como reforço, o enquadramento prende a janela em `[band.left, band.right]` e os limites
+  de x do piloto automático passam a depender de `y` (vista 3/4), então o pato nunca sai do
+  monitor mesmo com queda/cambalhota/empurrão na borda (05 §3).
+- **Pato voltava ao centro ao soltar o arrasto:** `_mascot_drag_finish` escrevia o `x` solto no
+  `qpos` e **depois** pedia `RESET` — e `mgr.request(RESET, sim)` roda `sim.reset()`
+  internamente, zerando o `x` (origem do mundo = centro da banda). O mesmo bug fazia
+  `mascot_last_x` nunca sobreviver em `enter_mascot`. Corrigido: o `RESET` vem antes da
+  escrita da posição, e o drop preserva a guinada ("mesmo sentido", 05 §6). Cursor de
+  mãozinha (aberta/fechada) no hover e durante o arrasto.
+- **Pato de costas (pedido do dono):** com a lei `base = 0 ou π` de 05 §5, o pato andava para
+  a esquerda de costas para a câmera e ficava parado assim depois de quedas/empurrões. Na
+  ADR-0009 ele passa a andar de ré (`vx < 0`, faixa treinada) com `yaw_ref ≈ 0`, e
+  `IDLE`/`TURN` sempre o giram de volta para a frente.
+- **Duplo clique (pedido do dono):** não abre mais o simulador — emite "Quack! Quack!".
+  Abrir o simulador fica só na bandeja e na roda de ações. O som é o MP3 fornecido pelo dono
+  em `assets/sounds/quack.mp3` (vai no instalador), tocado via MCI `mciSendStringW` — o
+  `winsound` não toca MP3 nem toca som da memória de forma assíncrona (foi por isso que a
+  primeira versão sintetizada saiu muda: `SND_MEMORY | SND_ASYNC` levanta `RuntimeError`).
+- **Bico do pato (pedido do dono):** o robô real tem servo de boca (`MOUTH_INDEX = 9`, fora
+  das políticas), mas o MJCF empacotado modela a mandíbula como geometria rígida — a jaw
+  linkage do "modelo novo" ficou de fora. Sem junta possível sem alterar o arquivo, adotada
+  a pose cinemática dos geoms `jaw`/`jaw_soft`/`mouth_tip` em runtime (regra 3), com lip-sync
+  da envolvente do `quack.mp3`, olhada "um tiquinho" e bocejo por quietude — parâmetros
+  verbatim de `idle_head.rs`/`robotd-params` (`glance_mouth 0,4`, `yawn_after 45 s`,
+  `yawn_every 90 s`, `yawn_open 0,6`, `yawn_pitch −0,15`). ADR-0010.
+- **"Abrir simulador" travava e fechava o pato (relato do dono):** a bandeja chamava
+  `show_simulator` puro, que só mostrava a janela sem sair do modo mascote — como
+  `self.mascot` continuava vivo, o `_tick` seguia no laço do mascote e a viewport do
+  simulador nunca renderizava (janela "congelada"). Corrigido com `open_simulator()`:
+  sai do mascote (`exit_mascot`, que já mostra a janela) ou só a mostra quando já está
+  no simulador; `listen_for_raise` usa o mesmo caminho. O clique simples no ícone da
+  bandeja também estava errado: a spec (05 §7) pede "mostra ou esconde o pato" e ele
+  chamava `show_simulator` — agora chama `toggle_mascot`.
+- **Roda → "Abrir simulador" travava o app inteiro (relato do dono, 2.ª ocorrência):** o
+  caminho da bandeja já estava corrigido, mas o setor da roda seguia travando — só na
+  tela real (offscreen nunca reproduziu). O `deleteLater()` da roda, uma `QWidget`
+  Python-subclassed com `Qt.Popup` + filtro de evento no `QApplication`, corrompia o
+  interpretador durante o desmanche do grab de mouse: `duckdesk.app.__dict__` era
+  esvaziado (`sys.modules['duckdesk.app']` chegava a ser substituído por um objeto de
+  arquivo — corrupção de heap, não finalização), e a partir daí cada `_tick` morria em
+  `NameError` num ciclo de 8 ms — simulador zumbi. Diagnosticado por bissecção:
+  todos os passos de `exit_mascot` eram inocentes; só a deleção do menu matava o
+  módulo (a do mascote, não). Nem `QTimer.singleShot(0, callback)` bastava. Corrigido:
+  a roda nunca é deletada — `_close_duck_wheel` só esconde (o widget já era reusado em
+  `_show_duck_wheel`); o callback continua diferido para fora do `mousePressEvent`.
+  Repro de tela real: `scripts/probe_wheel_death.py`; regressão offscreen:
+  `test_wheel_open_simulator_sector_leaves_a_healthy_app` (clique real via QTest +
+  `appmod.__dict__` íntegro).

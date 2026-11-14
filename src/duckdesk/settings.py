@@ -35,6 +35,7 @@ class Settings:
     def __init__(self, path: Path | None = None):
         self.path = path or (_app_dir() / "settings.json")
         self._data = dict(_DEFAULT)
+        self._save_warned = False
         try:
             self._data.update(json.loads(self.path.read_text(encoding="utf-8")))
         except FileNotFoundError:
@@ -50,5 +51,15 @@ class Settings:
         self.save()
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8")
+        """Persist; a read-only profile must not take the app down (M4)."""
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(
+                json.dumps(self._data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+        except OSError as e:
+            if not self._save_warned:
+                self._save_warned = True
+                log.warning("settings.json não gravável (%s); mudanças não serão salvas", e)
+            return
+        self._save_warned = False
