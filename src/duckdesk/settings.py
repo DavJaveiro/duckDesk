@@ -30,7 +30,12 @@ _DEFAULT = {
 def _app_dir() -> Path:
     base = os.environ.get("APPDATA") or str(Path.home() / ".config")
     d = Path(base) / "DuckDesk"
-    d.mkdir(parents=True, exist_ok=True)
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        # a read-only profile must never take the app down: reads fall back to
+        # defaults and save() warns once (M4 contract)
+        log.warning("diretório do perfil indisponível (%s)", e)
     return d
 
 
