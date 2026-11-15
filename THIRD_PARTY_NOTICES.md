@@ -90,6 +90,18 @@ no formato onedir: é possível substituí-las por outra build do Qt, conforme a
 Copyright NumPy Developers. Licenciado sob a BSD 3-Clause License —
 [licenses/BSD-3-Clause.txt](licenses/BSD-3-Clause.txt).
 
+### Reconhecimento de voz (Vosk) — Apache-2.0 / MIT
+
+O DuckDesk entende comandos falados em pt-BR 100 % offline (ADR-0012):
+
+- **Biblioteca `vosk`** (Alpha Cephei) e **modelo `vosk-model-small-pt-0.3`**
+  (empacotado como `assets/models/vosk-model-small-pt-0.3.zip`, hash pinado em
+  `assets/lock.json`): licenciados sob a Apache License 2.0 —
+  [licenses/Apache-2.0.txt](licenses/Apache-2.0.txt).
+- **Biblioteca `sounddevice`** (bastibe) e a **PortAudio** embutida em sua
+  wheel: licenciadas sob a MIT License —
+  [licenses/MIT.txt](licenses/MIT.txt).
+
 ### Som de grasno — fornecido pelo dono do projeto
 
 Arquivo `assets/sounds/quack.mp3` (som de reserva quando a voz gerada está desligada,

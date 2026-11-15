@@ -8,9 +8,19 @@
     "policies": {
       "repo": "pollen-robotics/microduck-policies",
       "ref": "v10"
+    },
+    "vosk": {
+      "model": "vosk-model-small-pt-0.3",
+      "url": "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
     }
   },
   "files": {
+    "models/vosk-model-small-pt-0.3.zip": {
+      "sha256": "6e1ce909032e1afa7a88e68a3d628ecafff302bdf195befab308826c395e93b7",
+      "size": 32453112,
+      "source": "vosk",
+      "url": "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip"
+    },
     "policies/v10/README.md": {
       "sha256": "491b39e6bd8ddb2840c7d12a39650331ef87412aa46d834980d8076504f5b8e7",
       "size": 75,

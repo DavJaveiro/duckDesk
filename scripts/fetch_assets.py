@@ -39,6 +39,13 @@ MICRODUCK_REF = "094d4bb4af31ec181156e1ea772437fdd7a55978"
 POLICIES_REPO = "pollen-robotics/microduck-policies"  # Hugging Face model repo
 POLICIES_REF = "v10"
 
+# Offline pt-BR speech model for voice commands (ADR-0012). Apache-2.0, from
+# alphacephei.com/vosk/models. The zip ships in the installer; the app extracts
+# it once to the user cache (platform/ears.py).
+VOSK_MODEL = "vosk-model-small-pt-0.3"
+VOSK_MODEL_ZIP = f"{VOSK_MODEL}.zip"
+VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_ZIP}"
+
 # docs/07 says "robot/microduck"; the real path in the repo is
 # src/mjlab_microduck/robot/microduck (see docs/relatorios/duvidas.md).
 ROBOT_DIR = "src/mjlab_microduck/robot/microduck"
@@ -213,12 +220,26 @@ def fetch_policies(files: dict[str, dict]) -> None:
     print(f"  copied {len(IN_SCOPE_POLICIES) + 2} files")
 
 
+def fetch_vosk(files: dict[str, dict]) -> None:
+    """Download the pinned Vosk pt-BR command-recognition model (ADR-0012)."""
+    print(f"fetching {VOSK_MODEL_ZIP}")
+    dest = ASSETS_DIR / "models" / VOSK_MODEL_ZIP
+    download(VOSK_MODEL_URL, dest)
+    files[dest.relative_to(ASSETS_DIR).as_posix()] = {
+        "sha256": sha256_file(dest),
+        "size": dest.stat().st_size,
+        "source": "vosk",
+        "url": VOSK_MODEL_URL,
+    }
+
+
 def write_lock(files: dict[str, dict]) -> None:
     lock = {
         "version": 1,
         "sources": {
             "microduck_rl": {"repo": MICRODUCK_RL_REPO, "ref": MICRODUCK_RL_REF},
             "policies": {"repo": POLICIES_REPO, "ref": POLICIES_REF},
+            "vosk": {"model": VOSK_MODEL, "url": VOSK_MODEL_URL},
         },
         "files": dict(sorted(files.items())),
     }
@@ -310,6 +331,7 @@ def main() -> int:
         files: dict[str, dict] = {}
         fetch_microduck_rl(files)
         fetch_policies(files)
+        fetch_vosk(files)
         write_lock(files)
         verify()
     if args.vendor:

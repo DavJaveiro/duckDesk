@@ -167,6 +167,34 @@ Tudo local e offline: os WAVs são renderizados uma vez por instalação no banc
 e o bico acompanha a envolvente do som tocado. **"Voz do pato"** na bandeja desliga ao
 vivo (`settings["voice"] = false`); `DUCK_IDENTITY` fixa a identidade em depuração.
 
+### Os ouvidos (`platform/ears.py`, `brain/voice_commands.py`, ADR-0012)
+
+O pato também **ouve comandos falados em português** — recurso do DuckDesk, sem
+equivalente no upstream (o robô real só detecta cafuné e sons ambiente, nunca
+palavras). Reconhecimento 100 % offline pelo Vosk (`vosk-model-small-pt-0.3`,
+empacotado) com **gramática restrita**: só as frases da tabela existem para o
+reconhecedor — conversa alheia cai no `[unk]` e é ignorada.
+
+| Frases | Efeito |
+|---|---|
+| `senta`, `sentar` · `levanta`, `levantar` | Sentar/Levantar (como a roda) |
+| `anda`, `andar`, `vai` · `vem`, `vem aqui` | Liga o piloto (mascote) ou impulso de avanço (simulador) |
+| `para`, `parar`, `quieto` | Para o impulso / desliga o piloto |
+| `pirueta`, `cambalhota`, `rola`, `mortal` | Cambalhota |
+| `bica`, `bicar` | Bicar o chão |
+| `chuta`, `chutar`, `chuta a bola` | Chute, alternando pernas |
+| `pia`, `grasna`, `fala` | `chirp` com lip-sync |
+| `dorme`, `dormir`, `vai dormir` | Senta, boceja e resmunga `coo` |
+| `olha`, `olha aqui`, `aqui` | Olhada para o lado + `inquire` |
+| `pato`, `oi pato` | Chamar a atenção — responde `inquire` |
+| `tchau`, `adeus` | O `peck` de despedida do robotd |
+
+Cada comando aceito pisca o bico (o "ouvi"). Vale nos dois modos — no simulador
+os comandos de movimento viram impulsos de `twist` no mesmo ponto do teclado.
+**"Ouvido do pato"** na bandeja liga/desliga o microfone ao vivo
+(`settings["ears"]`); sem modelo, sem microfone ou sem permissão do Windows o
+pato fica surdo sem erro.
+
 ## 7. Menu da bandeja
 
 O menu abaixo é o **QMenu nativo do ícone da bandeja** e não muda: ele é aberto pelo próprio
@@ -178,6 +206,8 @@ botão direito sobre o **pato** abre a roda de ações (§11), não este menu.
 - **Comportamentos** ▸ Sentar/Levantar · Bicar o chão · Cambalhota
 - **Piloto automático** (marcável, ligado por padrão)
 - **Voz do pato** (marcável, ligada por padrão): voz gerada por semente (§6, ADR-0011)
+- **Ouvido do pato** (marcável, ligado por padrão): comandos de voz pt-BR offline
+  (§6, ADR-0012)
 - **Pausar**
 - **Tamanho** ▸ Pequeno · Médio · Grande
 - **Iniciar com o Windows** (marcável): escreve ou apaga

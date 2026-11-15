@@ -273,6 +273,7 @@ class SimulatorWindow(QMainWindow):
 
         m_help = mb.addMenu("A&juda")
         self._act(m_help, "Atalhos de teclado", self._show_shortcuts)
+        self._act(m_help, "Testar microfone…", self.controller.on_mic_test)
         self._act(m_help, "Sobre e licenças", self.controller.on_about)
 
     def _act(self, menu, text, slot, shortcut=None, checkable=False):

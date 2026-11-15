@@ -20,8 +20,9 @@ hiddenimports = []
 
 # binary deps that PyInstaller's import scan misses (docs/06 checklist):
 # mujoco -> DLL + plugin/, glfw -> glfw3.dll, onnxruntime -> provider DLLs,
-# bam -> params/*.json actuator models (load_model resolves them at runtime)
-for pkg in ("mujoco", "glfw", "onnxruntime", "bam"):
+# bam -> params/*.json actuator models (load_model resolves them at runtime),
+# vosk -> libvosk.dll, _sounddevice_data -> portaudio.dll (ADR-0012)
+for pkg in ("mujoco", "glfw", "onnxruntime", "bam", "vosk", "_sounddevice_data"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b

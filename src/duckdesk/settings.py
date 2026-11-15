@@ -1,4 +1,5 @@
-"""Settings in %APPDATA%/DuckDesk/settings.json (docs/02 file table).
+"""Settings in %APPDATA%/DuckDesk/settings.json (docs/02 file table), with
+%LOCALAPPDATA% and %TEMP% fallbacks when the preferred dir can't be written.
 
 Window geometry is stored as base64 of QByteArray from
 QMainWindow.saveGeometry().
@@ -23,14 +24,44 @@ _DEFAULT = {
     "autostart": False,
     "voice": True,  # generated voice (platform/voice); off = silent duck
     "voice_seed": None,  # this install's vocal identity; drawn on first boot
+    "ears": True,  # voice commands via mic (platform/ears); off = deaf duck
 }
 
 
+def _probe_writable(d: Path) -> bool:
+    """True when `d` can be created and written to (real probe file)."""
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        probe = d / ".duckdesk-probe"
+        probe.write_text("x", encoding="ascii")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
 def _app_dir() -> Path:
-    base = os.environ.get("APPDATA") or str(Path.home() / ".config")
-    d = Path(base) / "DuckDesk"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """First writable profile dir — %APPDATA% preferred, then %LOCALAPPDATA%
+    and %TEMP%. A denied profile (AV sandbox, policy, a dir stuck in
+    delete-pending after an uninstall) must not take the app down (M4
+    contract): settings, the voice bank, the vosk model and logs all derive
+    from this path, so one decision here cascades everywhere."""
+    candidates = [
+        Path(os.environ[var]) / "DuckDesk"
+        for var in ("APPDATA", "LOCALAPPDATA")
+        if os.environ.get(var)
+    ]
+    temp = os.environ.get("TEMP") or os.environ.get("TMP")
+    if temp:
+        candidates.append(Path(temp) / "DuckDesk")
+    candidates.append(Path.home() / ".config" / "DuckDesk")
+    for i, d in enumerate(candidates):
+        if _probe_writable(d):
+            if i:
+                log.warning("perfil %s indisponível; usando %s", candidates[0], d)
+            return d
+    log.warning("nenhum diretório de perfil gravável; %s segue sem persistência", candidates[0])
+    return candidates[0]
 
 
 class Settings:

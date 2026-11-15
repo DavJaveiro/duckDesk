@@ -7,17 +7,15 @@ wheel in ``radial_menu.py`` (05 section 11).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from duckdesk import assets
 from duckdesk.brain.commands import Request
 
 
 def duck_icon() -> QIcon:
-    pm = QPixmap(32, 32)
-    pm.fill(Qt.GlobalColor.darkYellow)
-    return QIcon(pm)
+    return QIcon(str(assets.assets_dir() / "icons" / "duckdesk.png"))
 
 
 class Tray(QSystemTrayIcon):
@@ -53,6 +51,11 @@ class Tray(QSystemTrayIcon):
         self.act_voice.setCheckable(True)
         self.act_voice.setChecked(bool(self.ctrl.settings["voice"]))
         self.act_voice.toggled.connect(self.ctrl.on_voice_toggled)
+
+        self.act_ears = menu.addAction("Ouvido do pato")
+        self.act_ears.setCheckable(True)
+        self.act_ears.setChecked(bool(self.ctrl.settings["ears"]))
+        self.act_ears.toggled.connect(self.ctrl.on_ears_toggled)
 
         act_pause = menu.addAction("Pausar")
         act_pause.triggered.connect(self.ctrl.on_toggle_pause)

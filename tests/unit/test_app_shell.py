@@ -15,7 +15,21 @@ pytestmark = pytest.mark.unit
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
+def _run_key_writable() -> bool:
+    """Some hardened machines block Run-key writes from unsigned/interpreter
+    processes (WinError 5 even though the user owns the key)."""
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "DuckDeskProbe", 0, winreg.REG_SZ, "x")
+            winreg.DeleteValue(key, "DuckDeskProbe")
+        return True
+    except OSError:
+        return False
+
+
 def test_autostart_writes_and_deletes_run_key():
+    if not _run_key_writable():
+        pytest.skip("HKCU Run key not writable from this process (env policy)")
     autostart.set_enabled(True)
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
@@ -31,6 +45,8 @@ def test_autostart_writes_and_deletes_run_key():
 
 
 def test_autostart_disable_idempotent():
+    if not _run_key_writable():
+        pytest.skip("HKCU Run key not writable from this process (env policy)")
     autostart.set_enabled(False)  # nothing there -> no raise
 
 
@@ -61,6 +77,51 @@ def test_unwritable_settings_does_not_raise(tmp_path, caplog):
         s["speed"] = 0.5
     assert s["speed"] == 0.5  # in-memory value still works
     assert any("não gravável" in record.message for record in caplog.records)
+
+
+def test_app_dir_prefers_appdata(tmp_path, monkeypatch):
+    from duckdesk.settings import _app_dir
+
+    ad, lad, tmp = tmp_path / "ad", tmp_path / "lad", tmp_path / "tmp"
+    monkeypatch.setenv("APPDATA", str(ad))
+    monkeypatch.setenv("LOCALAPPDATA", str(lad))
+    monkeypatch.setenv("TEMP", str(tmp))
+    monkeypatch.setenv("TMP", str(tmp))
+    assert _app_dir() == ad / "DuckDesk"
+
+
+def test_app_dir_falls_back_when_appdata_blocked(tmp_path, monkeypatch, caplog):
+    """A denied %APPDATA% (AV sandbox, policy, a dir stuck in delete-pending
+    after an uninstall) must not leave the duck deaf: settings, the voice
+    bank, the vosk model and logs all derive from _app_dir()."""
+    from duckdesk.settings import _app_dir
+
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory", encoding="utf-8")  # mkdir under it fails
+    local = tmp_path / "local"
+    local.mkdir()
+    monkeypatch.setenv("APPDATA", str(blocked))
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    with caplog.at_level("WARNING", logger="duckdesk.settings"):
+        d = _app_dir()
+    assert d == local / "DuckDesk"
+    assert d.is_dir()  # probe really created it
+    assert any("indisponível" in r.message for r in caplog.records)
+
+
+def test_app_dir_all_denied_returns_canonical(tmp_path, monkeypatch, caplog):
+    """Everything denied: return the first candidate anyway — reads fall
+    back to defaults and save() degrades, like before (M4)."""
+    from duckdesk.settings import _app_dir
+
+    for name in ("APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "USERPROFILE"):
+        f = tmp_path / name
+        f.write_text("not a directory", encoding="utf-8")
+        monkeypatch.setenv(name, str(f))
+    with caplog.at_level("WARNING", logger="duckdesk.settings"):
+        d = _app_dir()
+    assert d == tmp_path / "APPDATA" / "DuckDesk"
+    assert any("sem persistência" in r.message for r in caplog.records)
 
 
 def test_rotating_log_written(tmp_path):
@@ -141,7 +202,12 @@ def test_tray_startup_does_not_fire_size_actions(tmp_path):
 
     class _Ctrl:
         def __init__(self):
-            self.settings = {"autopilot": True, "mascot_scale": 1.0, "voice": True}
+            self.settings = {
+                "autopilot": True,
+                "mascot_scale": 1.0,
+                "voice": True,
+                "ears": True,
+            }
             self.size_calls: list[float] = []
 
         def on_size_changed(self, scale):
@@ -166,6 +232,9 @@ def test_tray_startup_does_not_fire_size_actions(tmp_path):
             pass
 
         def on_voice_toggled(self, on):
+            pass
+
+        def on_ears_toggled(self, on):
             pass
 
         def on_toggle_pause(self):
