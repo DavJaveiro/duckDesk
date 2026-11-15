@@ -23,6 +23,7 @@ _DEFAULT = {
     "autostart": False,
     "voice": True,  # generated voice (platform/voice); off = silent duck
     "voice_seed": None,  # this install's vocal identity; drawn on first boot
+    "ears": True,  # voice commands via mic (platform/ears); off = deaf duck
 }
 
 

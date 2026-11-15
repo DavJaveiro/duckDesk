@@ -55,7 +55,9 @@ def qapp():
 def ctrl(qapp, tmp_path):
     from duckdesk.settings import Settings
 
-    c = AppController(qapp, settings=Settings(tmp_path / "settings.json"))
+    s = Settings(tmp_path / "settings.json")
+    s["ears"] = False  # tests never grab the real mic
+    c = AppController(qapp, settings=s)
     yield c
     c.on_quit()
 

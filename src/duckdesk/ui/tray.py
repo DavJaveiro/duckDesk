@@ -54,6 +54,11 @@ class Tray(QSystemTrayIcon):
         self.act_voice.setChecked(bool(self.ctrl.settings["voice"]))
         self.act_voice.toggled.connect(self.ctrl.on_voice_toggled)
 
+        self.act_ears = menu.addAction("Ouvido do pato")
+        self.act_ears.setCheckable(True)
+        self.act_ears.setChecked(bool(self.ctrl.settings["ears"]))
+        self.act_ears.toggled.connect(self.ctrl.on_ears_toggled)
+
         act_pause = menu.addAction("Pausar")
         act_pause.triggered.connect(self.ctrl.on_toggle_pause)
 

@@ -37,6 +37,11 @@ A voz cobre os outros momentos também: o pato cumprimenta ao acordar (`greet`),
 `inquire`, queda toca `alarm`, e segurá-lo faz "uêê" (`wheee`). **"Voz do pato"** na
 bandeja liga/desliga ao vivo.
 
+Ele também **obedece comandos falados em português**, reconhecidos offline no PC
+(Vosk + gramática restrita — ADR-0012): "senta", "levanta", "anda", "vem",
+"cambalhota", "bica", "chuta", "pia", "dorme", "olha", "tchau". **"Ouvido do
+pato"** na bandeja liga/desliga o microfone ao vivo.
+
 > **Projeto não oficial.** Não tem vínculo com a Pollen Robotics nem com a Hugging Face. Usa o
 > software aberto deles nos termos das licenças: veja [docs/07-licencas.md](docs/07-licencas.md).
 > **Uso não comercial**, por causa da licença dos modelos 3D.

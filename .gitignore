@@ -11,6 +11,7 @@ vendor/
 # Upstream assets are fetched + hash-checked (assets/lock.json is committed)
 assets/upstream/
 assets/policies/
+assets/models/
 
 # Build outputs
 build/

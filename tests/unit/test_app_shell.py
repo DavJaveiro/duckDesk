@@ -141,7 +141,12 @@ def test_tray_startup_does_not_fire_size_actions(tmp_path):
 
     class _Ctrl:
         def __init__(self):
-            self.settings = {"autopilot": True, "mascot_scale": 1.0, "voice": True}
+            self.settings = {
+                "autopilot": True,
+                "mascot_scale": 1.0,
+                "voice": True,
+                "ears": True,
+            }
             self.size_calls: list[float] = []
 
         def on_size_changed(self, scale):
@@ -166,6 +171,9 @@ def test_tray_startup_does_not_fire_size_actions(tmp_path):
             pass
 
         def on_voice_toggled(self, on):
+            pass
+
+        def on_ears_toggled(self, on):
             pass
 
         def on_toggle_pause(self):

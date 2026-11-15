@@ -99,3 +99,23 @@ Itens que **não** estavam nesta lista e foram corrigidos na revisão:
   - **`wheee_end` ocioso:** antes, sair do mascote renderizava o banco do passeio
     inteiro (~30 MB transientes) para tocar uma aterrissagem sem passeio — agora é no-op
     sem `wheee_start` anterior.
+- **Comandos de voz (pedido do dono, ADR-0012):** o dono pediu "falar no microfone e
+  ele reconhecer comandos". Fatos e desvios conscientes:
+  - **O pato real não tem isso.** O upstream tem microfone para o `pet-detect` (CNN
+    de ~20 KB que ouve *cafuné* na cabeça) e o `autod` (sentinela RMS que distingue
+    `Noise` de `Voice`) — nenhum entende palavras. Comandos falados são recurso novo,
+    não porte; a atribuição em `THIRD_PARTY_NOTICES.md` cobre só o Vosk, não o upstream.
+  - **WinRT descartado por impossibilidade de teste:** `SpeechRecognizer()` do
+    `Windows.Media.SpeechRecognition` falhou com `0x800455a0`
+    (`SPERR_WINRT_INTERNAL_ERROR`) até no construtor padrão neste ambiente (não
+    elevado); sem conseguir instanciar o reconhecedor, o caminho WinRT era código
+    cego. Vosk foi escolhido por funcionar em qualquer Windows, offline, com
+    gramática restrita — e por ser testável aqui.
+  - **Gramática limitada pelo vocabulário do modelo pequeno:** `aí`, `pé`, `cá` e
+    `chão` não constam do léxico do `vosk-model-small-pt-0.3` — frases que os
+    continham eram surdas e saíram da tabela (por isso "levanta", não "fica em pé").
+  - **`vem` é impulso, não perseguição:** no simulador, "vem" aplica um avanço de 3 s
+    para a frente da câmera — o pato não sabe onde o usuário está. No mascote, liga
+    o piloto, que eventualmente passa por perto.
+  - **Thread de áudio:** o callback roda na thread interna do PortAudio — exceção
+    registrada na ADR-0012 à ADR-0003; nenhum trabalho Qt/sim sai da thread Qt.

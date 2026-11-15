@@ -154,6 +154,13 @@ class AppController(QObject):
         from duckdesk.platform.voice import Voice
 
         self.voice = Voice(self.settings)  # generated voice (ADR-0011)
+        from duckdesk.platform.ears import DuckEars
+
+        self.ears = DuckEars(self.settings, assets.assets_dir(), self)
+        self.ears.heard.connect(self.on_voice_command)
+        QTimer.singleShot(0, self.ears.start)  # model load off the boot path
+        self._kick_flip = False  # 'chuta' alternates legs (05 §6)
+        self._voice_walk = 0  # 'anda/vem' forward impulse, control steps left
         self._bye = False
         self._rng = np.random.default_rng()
         self._vel_hist: deque = deque(maxlen=int(1.0 / CONTROL_DT))
@@ -208,6 +215,9 @@ class AppController(QObject):
                 self.on_request(req)
             cmd.head = self._head
             cmd.body = self._body
+            if self._voice_walk:  # 'anda/vem' voice impulse (ADR-0012)
+                cmd.twist[0] = 0.3
+                self._voice_walk -= 1
             self.mgr.set_command(cmd)
             targets = self.mgr.step(self.sim)
             self.sim.step_control(targets)
@@ -428,6 +438,64 @@ class AppController(QObject):
                 except OSError:
                     pass
 
+    def on_ears_toggled(self, on: bool) -> None:
+        """Tray 'Ouvido do pato' (ADR-0012): grabs/releases the mic live."""
+        self.settings["ears"] = on
+        self.ears.set_enabled(on)
+
+    def on_voice_command(self, phrase: str) -> None:
+        """A recognized pt-BR phrase -> the same path clicks/keys take.
+
+        Commands are semantic (brain/voice_commands); every accepted one gets
+        a tiny beak blip as the 'heard you' ack, then routes to the matching
+        handler — nothing here touches the policy bridge (regra 1)."""
+        from duckdesk.brain.voice_commands import resolve
+
+        cmd = resolve(phrase)
+        if cmd is None:
+            return
+        log.info("ouvido: %r -> %s", phrase, cmd)
+        self.beak.vocalise(((0.0, 0.45), (0.12, 0.0)))  # 'heard you' blip
+        if cmd == "sit":
+            self.on_request(Request.SIT)
+        elif cmd == "stand":
+            self.on_request(Request.STAND)
+        elif cmd == "walk":
+            if self.mascot is not None:
+                self.on_autopilot_toggled(True)
+            else:
+                self._voice_walk = int(2.0 / CONTROL_DT)
+        elif cmd == "stop":
+            if self.mascot is not None:
+                self.on_autopilot_toggled(False)
+            else:
+                self._voice_walk = 0  # cancel a pending impulse
+        elif cmd == "come":
+            if self.mascot is not None:
+                self.on_autopilot_toggled(True)  # he wanders over by himself
+            else:
+                self._voice_walk = int(3.0 / CONTROL_DT)
+        elif cmd == "roll":
+            self.on_request(Request.ROLL)
+        elif cmd == "peck":
+            self.on_request(Request.PECK)
+        elif cmd == "kick":
+            self.on_request(Request.KICK_R if self._kick_flip else Request.KICK_L)
+            self._kick_flip = not self._kick_flip
+        elif cmd == "chirp":
+            self._vocalise(self.voice.play("chirp"))
+        elif cmd == "sleep":
+            self.on_request(Request.SIT)
+            self.beak.yawn()
+            self._vocalise(self.voice.play("coo"))
+        elif cmd == "look":
+            self._head[2] = 0.6 * float(self._rng.choice((-1.0, 1.0)))
+            self._vocalise(self.voice.play("inquire"))
+        elif cmd == "poke":  # bare 'pato' — attention ack
+            self._vocalise(self.voice.play("inquire"))
+        elif cmd == "bye":
+            self.on_request(Request.PECK)  # the goodbye (robotd shutdown ritual)
+
     def on_size_changed(self, scale: float) -> None:
         self.settings["mascot_scale"] = scale
         if self.mascot is not None:
@@ -472,6 +540,7 @@ class AppController(QObject):
 
         sound.close()  # release the MCI quack alias
         self.voice.close()  # winsound purge + waveOut
+        self.ears.close()  # release the mic (ADR-0012)
         self.app.quit()
 
     # --- mascot mode (docs/05) ---------------------------------------------------

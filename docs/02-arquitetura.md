@@ -34,6 +34,7 @@
 | `policy/validate.py` | Validação de ONNX do usuário (03 §9) | onnxruntime |
 | `brain/commands.py` | Dataclass `DuckCommand` (twist, head, body) e `Request` (`SIT`, `STAND`, `PECK`, `ROLL`, `KICK_L`, `KICK_R`, `RESET`) | — |
 | `brain/autopilot.py` — `Autopilot` | Máquina de estados do mascote (05 §5). Recebe o estado do pato e a faixa de x permitida e devolve comando e pedidos. Sem Qt. | numpy |
+| `brain/voice_commands.py` | Gramática pt-BR dos comandos de voz e mapeamento frase → comando semântico (05 §6, ADR-0012). Sem deps, testável sem microfone. | — |
 | `brain/beak.py` — `BeakAnimator` | Animação do bico: lip-sync do grasno, olhada "um tiquinho" e bocejo por quietude — porte dos `idle_head.rs`/`robotd-params` do upstream (05 §6, ADR-0010). Sem Qt. | numpy |
 | `brain/keyboard.py` | Mapeia teclas para `DuckCommand` e `Request` (04 §3). Sem Qt: recebe códigos de tecla abstratos. | — |
 | `render/offscreen.py` | Envolve `mujoco.Renderer`: renderização RGB e de segmentação, máscara do pato, superamostragem 2× e saída em array RGBA pré-multiplicado | mujoco |
@@ -49,6 +50,7 @@
 | `platform/autostart.py` | Liga e desliga "Iniciar com o Windows" (`HKCU\...\Run`) | winreg |
 | `platform/sound.py` | Fallback do "Quack! Quack!" quando a voz está desligada: toca `assets/sounds/quack.mp3` (empacotado) via MCI `mciSendStringW`, assíncrono por natureza (05 §6) | ctypes/winmm |
 | `platform/voice/` | Voz gerada por semente — porte do daemon `sounds/` upstream: `rng.py` (xoshiro256++/splitmix64/CRC-32), `synth.py` (DSP 48 kHz), `personality.py` (traços por semente), `voices.py` (7 tags), `__init__.py` (banco WAV lazy + facade `Voice`) (05 §6, ADR-0011) | numpy, winsound |
+| `platform/ears.py` | Ouvido do pato — comandos de voz pt-BR offline: Vosk + gramática restrita no mic padrão a 16 kHz, `heard` → `on_voice_command`; degrada mudo sem modelo/mic (05 §6, ADR-0012) | vosk, sounddevice |
 | `settings.py` | Configurações em `%APPDATA%\DuckDesk\settings.json`: tamanho do mascote, último modo, autostart, velocidade. Se o perfil não for gravável, o app continua rodando sem persistir (e os logs caem para `%TEMP%\DuckDesk\logs`) | — |
 | `app.py` — `AppController` | Monta tudo, laço do `QTimer`, troca de modos | todos |
 | `__main__.py` | Ponto de entrada (`duckdesk`). Instância única (`QLockFile` ou mutex nomeado). | app |
@@ -126,6 +128,8 @@ DuckDesk/
 | numpy | 2.4.1 | idem |
 | better-actuator-models | git `62bd8ce…` com o extra `[mujoco]` | o mesmo commit do `uv.lock` do `microduck_rl` (ADR-0006) |
 | PySide6-Essentials | a 6.x mais recente com wheel para cp312 win_amd64, fixada em `uv.lock` | Qt sem os módulos pesados (WebEngine etc.) |
+| vosk | ≥ 0.3.45, fixada em `uv.lock` | reconhecimento offline pt-BR dos comandos de voz (ADR-0012) |
+| sounddevice | ≥ 0.5.6, fixada em `uv.lock` | captura do microfone p/ o Vosk (PortAudio embutido) |
 | pyinstaller | a mais recente estável, fixada em `uv.lock` | — |
 | pytest, ruff | grupo `dev` | — |
 
@@ -147,3 +151,4 @@ resolvedor não mudou `mujoco`, `onnxruntime` ou `numpy`.
 | [0009](adr/0009-mascote-sempre-de-frente.md) | Mascote sempre virado para a câmera: esquerda de ré (vx < 0), IDLE/TURN voltam à frente |
 | [0010](adr/0010-bico-articulado-em-runtime.md) | Bico do mascote: pose cinemática dos geoms da mandíbula (sem junta/atuador novos); lip-sync do grasno, olhada e bocejo do upstream |
 | [0011](adr/0011-voz-gerada-por-semente.md) | Voz gerada por semente: porte do daemon `sounds/` (sintetizador procedural, não TTS), tags por evento, banco WAV lazy |
+| [0012](adr/0012-comandos-de-voz-offline.md) | Comandos de voz pt-BR offline: Vosk + gramática restrita, mic via PortAudio, dispatch no mesmo caminho dos cliques |
