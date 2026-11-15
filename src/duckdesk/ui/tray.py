@@ -7,17 +7,15 @@ wheel in ``radial_menu.py`` (05 section 11).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from duckdesk import assets
 from duckdesk.brain.commands import Request
 
 
 def duck_icon() -> QIcon:
-    pm = QPixmap(32, 32)
-    pm.fill(Qt.GlobalColor.darkYellow)
-    return QIcon(pm)
+    return QIcon(str(assets.assets_dir() / "icons" / "duckdesk.png"))
 
 
 class Tray(QSystemTrayIcon):

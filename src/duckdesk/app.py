@@ -19,6 +19,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 from PySide6.QtCore import QByteArray, QObject, QPoint, Qt, QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -907,6 +908,7 @@ def _install_sigint(controller) -> None:
 
 def run(argv=None) -> int:
     app = QApplication(argv or sys.argv)
+    app.setWindowIcon(QIcon(str(assets.assets_dir() / "icons" / "duckdesk.png")))
     app.setQuitOnLastWindowClosed(False)  # tray keeps it alive
     if notify_existing_instance():
         return 0  # second launch: existing instance comes forward
