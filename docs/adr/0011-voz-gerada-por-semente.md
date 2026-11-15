@@ -16,7 +16,10 @@ start/loop/end). Há ainda o **theremin** (`stream.rs`): um sintetizador contíg
 tom acompanha a distância da mão, e o coro (chorale, fora de escopo — um pato só).
 
 O dono escolheu "tudo + theremin" e pediu o `chirp` gerado no duplo clique em vez do MP3
-(enviado por ele e usado desde então).
+(enviado por ele e usado desde então). **Depois da entrega, o dono não gostou do
+theremin por cursor** (o pato vocalizava só de aproximar a seta) e pediu a remoção:
+o theremin saiu — `stream.py`, `waveout.py` e `_theremin_closeness` foram deletados
+na mesma branch; o histórico do git preserva a implementação.
 
 ## Decisão
 
@@ -28,9 +31,10 @@ Porte arquivo a arquivo do daemon em `src/duckdesk/platform/voice/`:
 | `synth.py` | `sounds/src/synth.rs` | primitivas DSP 48 kHz em numpy (envolventes, oscilador harmônico, ruído rosa, int16) |
 | `personality.py` | `sounds/src/personality.rs` | ~20 traços derivados da semente, ranges verbatim; `variant_rng` por CRC-32 |
 | `voices.py` | `sounds/src/voices.rs` | as 7 receitas + `wheee_segments` (loop com crossfade na emenda) |
-| `stream.py` | `sounds/src/stream.rs` | sintetizador contíguo por blocos (slew de tom/nível/boca, jitter e breath com carry) |
-| `waveout.py` | — | `winmm waveOut` por ctypes para o streaming (QtMultimedia não existe no venv) |
 | `__init__.py` | `sounds/src/lib.rs` | `seed_from_id`/`resolve_seed` (`DUCK_IDENTITY` primeiro), `VoiceBank` lazy + marca `.seed`, `envelope_of`, facade `Voice` |
+
+(`stream.py`/`waveout.py`, o theremin por cursor, existiram e foram removidos — ver
+Contexto.)
 
 Identidade do DuckDesk: `settings["voice_seed"]`, sorteada e persistida no primeiro boot
 (o substituto do serial do SoC, que não existe num desktop); `DUCK_IDENTITY` continua
@@ -42,15 +46,11 @@ bandeja (`settings["voice"]`).
 arquivo — a limitação que mutou o primeiro grasno era só memória+async; arquivo funciona.
 `wheee` toca o segmento de loop com `SND_LOOP` durante o arrasto e aterrissa com o
 segmento `end` (o `start` foi fundido ao loop por não haver encadeamento no winsound).
-O theremin bombeia blocos de 20 ms pela thread do Qt (regra 6/ADR-0003) para um anel de
-buffers do `waveOut`.
 
 **Eventos (mapeamento do `robotd/main.rs`):** `greet` ao entrar no mascote, `chirp` no
 duplo clique (substitui o MP3, que vira fallback sem voz), `peck` na bicada e antes de
 sair, `coo` no bocejo, `inquire` nas olhadas do IDLE (moeda ~15 %, para não virar
 metrônomo) e na olhada por clique, `alarm` na queda (RECOVER), `wheee` no arrasto.
-**Theremin:** cursor a menos de ~2 larguras de pato ergue uma nota cujo tom varre
-geometricamente o alcance do pato (`hz_at` do `stream.rs`).
 
 **Lip-sync:** `envelope_of` extrai os quadros RMS de 40 ms do WAV tocado (o mesmo
 método que gerou `QUACK_ENV`), e `BeakAnimator.vocalise(frames)` generaliza o `quack()`
@@ -66,15 +66,14 @@ inalterada).
   o arrasto entra direto no loop (que já carrega a subida por crossfade) e o `end` toca
   ao soltar. O pato em "passeio" curto faz "ui!" em vez de "uêêê~" — aceitável.
 - **Coro fora de escopo:** `chorale/` precisa de partitura e de *vários* patos.
-- **Theremin por cursor** (não por câmera/mão): sem câmera no desktop, a distância do
-  cursor ao pato é o análogo da distância da mão.
+- **Theremin removido:** chegou a ser portado por cursor (o análogo desktop da
+  distância da mão), mas o dono não gostou do pato falando ao aproximar a seta —
+  removido; o mascote vocaliza por eventos autônomos e por clique.
 
 ## Alternativas descartadas
 
 - **TTS neural / modelos de voz:** pesado, precisaria de runtime novo, e não é o que o
   pato real faz — o sintetizador procedural é mais leve, offline e fiel.
-- **`QtMultimedia` para o theremin:** `PySide6.QtMultimedia` não está no venv
-  (PySide6-Essentials); `waveOut` por ctypes cobre o streaming sem dependência nova.
 - **Renderizar todo o banco no boot:** ~70 WAVs × síntese atrasaria a entrada; lazy por
   primeiro uso, com o marcador `<seed>:<versão>` regenerando só quando a voz muda.
 - **MCI (mciSendString) para os WAVs:** funciona, mas `winsound` é stdlib, toca arquivo
@@ -88,7 +87,6 @@ inalterada).
 - `Sair`/Ctrl+C toca o `peck` de despedida e atrasa o fechamento ~350 ms; a suíte e o
   SIGINT passam pelo mesmo caminho (`on_quit` → `_finish_quit`).
 - Testes: `tests/unit/test_voice.py` (RNG pinado, CRC-32 do teste upstream, ranges de
-  personalidade, receitas, banco/cache, fachada, theremin) e
-  `tests/ui/test_voice_wiring.py` (greet/chirp/peck/coo/inquire/alarm/wheee/theremin).
-- Custo de CPU: síntese lazy na entrada do mascote (~ms por tag); o theremin consome
-  ~1–2 % de um núcleo enquanto toca.
+  personalidade, receitas, banco/cache, fachada) e
+  `tests/ui/test_voice_wiring.py` (greet/chirp/peck/coo/inquire/alarm/wheee).
+- Custo de CPU: síntese lazy na entrada do mascote (~ms por tag).

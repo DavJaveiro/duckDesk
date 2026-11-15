@@ -1,6 +1,6 @@
 """Generated voice (ADR-0011): RNG determinism, personality traits, the seven
-recipes, the WAV bank/cache, the Voice facade, the streamed theremin, and the
-autopilot voice wiring.
+recipes, the WAV bank/cache, the Voice facade, and the autopilot voice
+wiring.
 
 The pinned values pin THIS port's stream (numpy f64 vs the upstream Rust's
 f32/libm means bit-parity is unattainable — the contract that matters is
@@ -19,7 +19,6 @@ import pytest
 from duckdesk.platform.voice import Voice, VoiceBank, envelope_of, seed_from_id, voices
 from duckdesk.platform.voice.personality import Personality
 from duckdesk.platform.voice.rng import Rng, crc32
-from duckdesk.platform.voice.stream import Stream, hz_at
 from duckdesk.platform.voice.synth import SR
 from duckdesk.settings import Settings
 
@@ -250,43 +249,6 @@ def test_voice_seed_is_drawn_once_and_persisted(tmp_path):
     s2 = Settings(tmp_path / "settings.json")
     assert s2["voice_seed"] == seed  # same install, same voice forever
     v.close()
-
-
-# --- stream.py: the theremin (sounds/src/stream.rs) -----------------------------
-
-
-def test_theremin_maps_position_geometrically():
-    p = Personality.from_seed(SEED)
-    lo, hi = Stream(p, "wheee", 0).range_hz()
-    assert lo == pytest.approx(p.pitch_center_hz * 0.85)
-    # hz_at is linear in semitones: midpoint lands on the geometric mean.
-    assert hz_at(p, 0.5) == pytest.approx((lo * hi) ** 0.5, rel=1e-9)
-    assert hz_at(p, 0.0) == pytest.approx(lo)
-    assert hz_at(p, 2.0) == pytest.approx(hi)  # clamped
-
-
-def test_stream_blocks_join_without_steps():
-    """Consecutive blocks continue phase/slew — no per-block clicks."""
-    p = Personality.from_seed(SEED)
-    st = Stream.wheee(p, 0)
-    st.set(600.0, 1.0, 0.5)
-    a = st.block(960)
-    st.set(650.0, 1.0, 0.5)  # a tick's worth of parameter movement
-    b = st.block(960)
-    assert np.isfinite(a).all() and np.isfinite(b).all()
-    assert abs(float(b[0]) - float(a[-1])) < 0.2  # continuous across the seam
-    assert float(np.abs(b).max()) <= 1.0
-
-
-def test_stream_fades_to_silence():
-    p = Personality.from_seed(SEED)
-    st = Stream.wheee(p, 0)
-    st.set(600.0, 1.0, 0.5)
-    st.block(960)
-    st.set_level(0.0)
-    for _ in range(50):  # ~1 s of 20 ms blocks
-        st.block(960)
-    assert st.is_silent()
 
 
 # --- autopilot voice wiring ------------------------------------------------------

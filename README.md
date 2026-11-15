@@ -34,8 +34,7 @@ continua no ícone da bandeja, inclusive na área de ícones ocultos.
 
 A voz cobre os outros momentos também: o pato cumprimenta ao acordar (`greet`), bicar toca
 `peck` (que também é o "tchau" ao sair), bocejo toca `coo`, olhadas curiosas tocam
-`inquire`, queda toca `alarm`, e segurá-lo faz "uêê" (`wheee`). Aproxime o cursor dele e
-uma nota contínua acompanha a distância — um pequeno theremin. **"Voz do pato"** na
+`inquire`, queda toca `alarm`, e segurá-lo faz "uêê" (`wheee`). **"Voz do pato"** na
 bandeja liga/desliga ao vivo.
 
 > **Projeto não oficial.** Não tem vínculo com a Pollen Robotics nem com a Hugging Face. Usa o

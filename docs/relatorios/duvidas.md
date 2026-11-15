@@ -90,9 +90,10 @@ Itens que **não** estavam nesta lista e foram corrigidos na revisão:
     naquilo". O arrasto entra direto no loop (que já carrega a subida via crossfade na
     emenda) e aterrissa com o segmento `end`. Curto arrasto sai "ui!" em vez de "uêê~".
   - **Coro (`chorale/`) fora de escopo:** depende de partitura e de vários patos.
-  - **Theremin por cursor:** sem câmera/mão no desktop, a distância do cursor ao pato é
-    o análogo da distância da mão (`hz_at` do `stream.rs`, streaming via `waveOut`
-    ctypes — `PySide6.QtMultimedia` não existe no venv).
+  - **Theremin removido:** chegou a ser portado por proximidade de cursor (`stream.rs`
+    via `waveOut` ctypes — `PySide6.QtMultimedia` não existe no venv), mas o dono não
+    gostou do pato falando ao aproximar a seta; removido — o mascote só vocaliza por
+    eventos autônomos e por clique.
   - **Semente:** `settings["voice_seed"]` sorteada no 1.º boot substitui o serial do SoC;
     `DUCK_IDENTITY` continua como override de desenvolvimento (lib.rs `seed_from_id`).
   - **`wheee_end` ocioso:** antes, sair do mascote renderizava o banco do passeio

@@ -52,12 +52,6 @@ class _FakeVoice:
     def wheee_end(self):
         self.tags.append("wheee:end")
 
-    def theremin_tick(self, closeness, open_):
-        self.tags.append(("theremin", closeness))
-
-    def theremin_stop(self):
-        self.tags.append("theremin:stop")
-
     def close(self):
         self.closed = True
 
@@ -100,7 +94,6 @@ def test_exit_mascot_lands_the_ride(ctrl):
     ctrl.voice.tags.clear()
     ctrl.exit_mascot()
     assert "wheee:end" in ctrl.voice.tags  # a ride in progress lands
-    assert "theremin:stop" in ctrl.voice.tags
 
 
 def test_drag_rides_the_wheee(ctrl):
@@ -138,14 +131,3 @@ def test_quit_says_peck_and_releases_audio(ctrl):
     assert "peck" in ctrl.voice.tags
     ctrl._finish_quit()  # the delayed tail of on_quit
     assert ctrl.voice.closed
-
-
-def test_theremin_silence_while_dragging(ctrl):
-    """The pump keeps feeding during drags so the level can fade (ADR-0011)."""
-    ctrl.enter_mascot()
-    ctrl._dragging_duck = True
-    assert ctrl._theremin_closeness() is None
-    ctrl._dragging_duck = False
-    c = ctrl._theremin_closeness()
-    assert c is None or 0.0 <= c <= 1.0
-    ctrl.exit_mascot()

@@ -6,12 +6,12 @@ nasality, vibrato, quackiness, tempo — so each DuckDesk install gets a voice
 that is recognisably its own, exactly like each robot getting its voice from
 the SoC serial. Tags: greet (mascot wake), chirp (double-click), peck (peck +
 goodbye), coo (yawn), inquire (curious look), alarm (fall), wheee (drag
-ride), plus a streamed theremin driven by cursor distance.
+ride).
 
 Everything is local and cheap: numpy synthesis rendered lazily into a WAV
 bank next to settings.json, played via winsound (files — the memory+async
-limit that muted the first quack does not apply); the theremin streams
-through winmm waveOut. No network, no threads (regras 6-7).
+limit that muted the first quack does not apply). No network, no threads
+(regras 6-7).
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ import numpy as np
 
 from duckdesk.platform.voice import voices
 from duckdesk.platform.voice.personality import Personality
-from duckdesk.platform.voice.stream import Stream
 from duckdesk.platform.voice.synth import SR, to_i16
 
 log = logging.getLogger("duckdesk.voice")
@@ -143,8 +142,6 @@ class Voice:
     def __init__(self, settings):
         self.enabled = bool(settings["voice"]) and winsound is not None
         self._bank = None
-        self._wave = None
-        self._stream = None
         self._wheee_variant: int | None = None
         self._rng = random.Random()
         if self.enabled:
@@ -205,52 +202,12 @@ class Voice:
         finally:
             self._wheee_variant = None
 
-    # --- the theremin (cursor distance) ----------------------------------------
-
-    def theremin_tick(self, closeness: float | None, open_: float) -> None:
-        """Pump the streamed voice once per mascot tick.
-
-        ``closeness`` in (0, 1] raises a note that geometrically sweeps this
-        duck's range (stream.rs hz_at); None/0 fades it out — a fade, not a
-        click, because the level slews (stream.rs).
-        """
-        if not self.enabled:
-            return
-        try:
-            if self._stream is None:
-                if not closeness:
-                    return
-                from duckdesk.platform.voice.waveout import WaveOut
-
-                self._wave = WaveOut()
-                self._stream = Stream.wheee(self._bank.personality, 0)
-            level = 1.0 if closeness else 0.0
-            hz = self._stream.hz_at(closeness or 0.0)
-            self._stream.set(hz, level, open_)
-            while self._wave.free:
-                self._wave.write(to_i16(self._stream.block(self._wave.block_n)))
-            if self._stream.is_silent():
-                self._wave.close()
-                self._wave = self._stream = None
-        except OSError as e:
-            log.warning("theremin indisponível: %s", e)
-            self.enabled = False
-
-    def theremin_stop(self) -> None:
-        """Leaving mascot mode: fade fast and drop the PCM sink."""
-        if self._stream is not None:
-            self._stream.set_level(0.0)
-        if self._wave is not None:
-            self._wave.close()
-        self._wave = self._stream = None
-
     # --- lifecycle --------------------------------------------------------------
 
     def close(self) -> None:
-        """App quit: cut winsound playback and release the waveOut handle."""
+        """App quit: cut winsound playback."""
         if winsound is not None:
             try:
                 winsound.PlaySound(None, winsound.SND_PURGE)
             except (OSError, RuntimeError):
                 pass
-        self.theremin_stop()

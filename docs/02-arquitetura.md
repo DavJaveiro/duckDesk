@@ -48,7 +48,7 @@
 | `platform/win_topmost.py` | Reafirma `HWND_TOPMOST`; detecta app em tela cheia (`SHQueryUserNotificationState`) | ctypes |
 | `platform/autostart.py` | Liga e desliga "Iniciar com o Windows" (`HKCU\...\Run`) | winreg |
 | `platform/sound.py` | Fallback do "Quack! Quack!" quando a voz está desligada: toca `assets/sounds/quack.mp3` (empacotado) via MCI `mciSendStringW`, assíncrono por natureza (05 §6) | ctypes/winmm |
-| `platform/voice/` | Voz gerada por semente — porte do daemon `sounds/` upstream: `rng.py` (xoshiro256++/splitmix64/CRC-32), `synth.py` (DSP 48 kHz), `personality.py` (traços por semente), `voices.py` (7 tags), `stream.py` + `waveout.py` (theremin contíguo via `waveOut`), `__init__.py` (banco WAV lazy + facade `Voice`) (05 §6, ADR-0011) | numpy, ctypes/winmm, winsound |
+| `platform/voice/` | Voz gerada por semente — porte do daemon `sounds/` upstream: `rng.py` (xoshiro256++/splitmix64/CRC-32), `synth.py` (DSP 48 kHz), `personality.py` (traços por semente), `voices.py` (7 tags), `__init__.py` (banco WAV lazy + facade `Voice`) (05 §6, ADR-0011) | numpy, winsound |
 | `settings.py` | Configurações em `%APPDATA%\DuckDesk\settings.json`: tamanho do mascote, último modo, autostart, velocidade. Se o perfil não for gravável, o app continua rodando sem persistir (e os logs caem para `%TEMP%\DuckDesk\logs`) | — |
 | `app.py` — `AppController` | Monta tudo, laço do `QTimer`, troca de modos | todos |
 | `__main__.py` | Ponto de entrada (`duckdesk`). Instância única (`QLockFile` ou mutex nomeado). | app |
@@ -146,4 +146,4 @@ resolvedor não mudou `mujoco`, `onnxruntime` ou `numpy`.
 | [0008](adr/0008-roda-de-acoes-do-mascote.md) | Roda radial de ações no clique direito do pato; menu nativo só no ícone da bandeja |
 | [0009](adr/0009-mascote-sempre-de-frente.md) | Mascote sempre virado para a câmera: esquerda de ré (vx < 0), IDLE/TURN voltam à frente |
 | [0010](adr/0010-bico-articulado-em-runtime.md) | Bico do mascote: pose cinemática dos geoms da mandíbula (sem junta/atuador novos); lip-sync do grasno, olhada e bocejo do upstream |
-| [0011](adr/0011-voz-gerada-por-semente.md) | Voz gerada por semente: porte do daemon `sounds/` (sintetizador procedural, não TTS), tags por evento, theremin por cursor, banco WAV lazy |
+| [0011](adr/0011-voz-gerada-por-semente.md) | Voz gerada por semente: porte do daemon `sounds/` (sintetizador procedural, não TTS), tags por evento, banco WAV lazy |

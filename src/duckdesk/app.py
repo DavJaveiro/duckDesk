@@ -8,7 +8,6 @@ rendering never blocks physics and never runs more often than needed.
 from __future__ import annotations
 
 import logging
-import math
 import os
 import signal
 import sys
@@ -20,7 +19,6 @@ from pathlib import Path
 import mujoco
 import numpy as np
 from PySide6.QtCore import QByteArray, QObject, QPoint, Qt, QTimer
-from PySide6.QtGui import QCursor
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
@@ -422,7 +420,6 @@ class AppController(QObject):
         self.voice.enabled = on and self.voice._bank is not None
         if not on:
             self.voice.wheee_end()  # a held ride lands immediately
-            self.voice.theremin_stop()
             from duckdesk.platform.voice import winsound
 
             if winsound is not None:
@@ -573,7 +570,6 @@ class AppController(QObject):
         self._close_duck_wheel()
         self._clear_push()
         self.voice.wheee_end()  # a ride in progress lands
-        self.voice.theremin_stop()
         self.beak.stop()
         self.sim.set_beak(0.0)  # mouth shut again in the simulator
         self.settings["mascot_last_x"] = float(self.sim.trunk_pos()[0])
@@ -662,25 +658,9 @@ class AppController(QObject):
         if self._radial_menu is not None:
             self._radial_menu.hide()  # == close(): WA_DeleteOnClose is not set
 
-    def _theremin_closeness(self) -> float | None:
-        """Cursor proximity -> 0..1 for the streamed voice (ADR-0011).
-
-        The note swells inside ~2 duck-widths and fades outside — the
-        upstream theremin's hand distance, re-read for a desktop cursor."""
-        if self.mascot is None or self._dragging_duck or self._fullscreen_hidden:
-            return None
-        p = QCursor.pos()
-        c = self.mascot.geometry().center()
-        d = math.hypot(p.x() - c.x(), p.y() - c.y())
-        radius = 2.0 * self.mascot.width()
-        return max(0.0, min(1.0, 1.0 - d / radius)) or None
-
     def _tick_mascot(self, now: float) -> None:
         n = self.clock.steps_due(now - self._last)
         self._last = now
-        # The theremin pumps before the pause gate so its fades keep flowing
-        # during drags/fullscreen-hide (level slews; silence arrives softly).
-        self.voice.theremin_tick(self._theremin_closeness(), self.beak.mouth)
         if self._dragging_duck or self._fullscreen_hidden:
             return  # paused while dragged or a fullscreen app holds the screen
         for _ in range(n):

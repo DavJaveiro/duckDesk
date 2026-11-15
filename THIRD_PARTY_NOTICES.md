@@ -42,7 +42,7 @@ Copyright Pollen Robotics. Licenciado sob a Apache License 2.0 —
 
 `src/duckdesk/platform/voice/` deriva do daemon `sounds/` do repositório
 `pollen-robotics/microduck` (RNG xoshiro256++/splitmix64, DSP a 48 kHz, personalidade
-por semente, receitas de vocalização e o streaming do theremin), cada arquivo com
+por semente e receitas de vocalização), cada arquivo com
 cabeçalho indicando a fonte original. O sintetizador original, por sua vez, é um porte
 de `apirrone/microduck_sounds`.
 

@@ -162,10 +162,6 @@ com variantes, para não soar como gravação:
 | queda (RECOVER) | `alarm` | |
 | arrasto | `wheee` | loop enquanto segura + aterrissagem ao soltar |
 
-Além das vocalizações há o **theremin**: aproximar o cursor do pato (menos de ~2
-larguras) ergue uma nota contínua cujo tom varre o alcance vocal dele — o análogo, com
-cursor, do theremin por distância da mão do robô real (`stream.rs`, via `waveOut`).
-
 Tudo local e offline: os WAVs são renderizados uma vez por instalação no banco
 `%APPDATA%/DuckDesk/voice/` (regenerado se a semente ou a versão do sintetizador mudar)
 e o bico acompanha a envolvente do som tocado. **"Voz do pato"** na bandeja desliga ao

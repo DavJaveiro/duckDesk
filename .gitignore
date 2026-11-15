@@ -27,3 +27,7 @@ Thumbs.db
 # IDE
 .idea/
 MUJOCO_LOG.TXT
+
+# pytest temp dirs (Windows local runs)
+pytest-of-*/
+tmp*/
