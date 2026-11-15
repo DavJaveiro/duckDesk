@@ -228,6 +228,60 @@ def test_ears_callback_emits_heard_on_finished_utterance(tmp_path, monkeypatch):
     assert fake_sd.streams[0].stopped
 
 
+def test_ears_suspend_blocks_start_until_resume(tmp_path, monkeypatch):
+    """The mic-test dialog borrows the mic via suspend(): a stray start()
+    (e.g. tray toggle) must not reopen the stream and double-feed the
+    shared recognizer while the hold lasts."""
+    assets = tmp_path / "assets"
+    (assets / "models").mkdir(parents=True)
+    _zip_with_final_mdl(assets / "models" / ears.MODEL_ZIP)
+    fake_sd = _FakeSd()
+    monkeypatch.setattr(ears, "sd", fake_sd)
+    monkeypatch.setattr(ears, "Model", lambda _p: object())
+    monkeypatch.setattr(ears, "KaldiRecognizer", _FakeRecognizer)
+
+    e = ears.DuckEars(_settings(tmp_path), assets)
+    e.start()
+    st = fake_sd.streams[0]
+    e.suspend()
+    assert e._stream is None and st.stopped
+    e.start()  # blocked by the hold
+    assert e._stream is None and len(fake_sd.streams) == 1
+    e.resume()
+    assert e._stream is not None and len(fake_sd.streams) == 2
+    e.close()
+
+
+def test_ears_suspend_resume_deaf_stays_quiet(tmp_path, monkeypatch):
+    """suspend()/resume() on a deaf ears object: no stream, no crash."""
+    monkeypatch.setattr(ears, "sd", _FakeSd())
+    e = ears.DuckEars(_settings(tmp_path, on=False), tmp_path / "assets")
+    e.suspend()
+    e.resume()
+    assert e._stream is None
+
+
+def test_ears_prepare_recognizer_booted_deaf(tmp_path, monkeypatch):
+    """The test dialog can build the recognizer even when the ears booted
+    deaf (settings['ears']=False skips model resolution at __init__)."""
+    assets = tmp_path / "assets"
+    (assets / "models").mkdir(parents=True)
+    _zip_with_final_mdl(assets / "models" / ears.MODEL_ZIP)
+    monkeypatch.setattr(ears, "Model", lambda _p: object())
+    monkeypatch.setattr(ears, "KaldiRecognizer", _FakeRecognizer)
+
+    e = ears.DuckEars(_settings(tmp_path, on=False), assets)
+    assert e.recognizer is None and e._model_dir is None
+    assert e.prepare_recognizer(assets, tmp_path / "cache")
+    assert e.recognizer is not None
+
+
+def test_ears_prepare_recognizer_missing_model(tmp_path, monkeypatch):
+    e = ears.DuckEars(_settings(tmp_path, on=False), tmp_path / "assets")
+    assert not e.prepare_recognizer(tmp_path / "assets", tmp_path / "cache")
+    assert e.recognizer is None
+
+
 def test_ears_mic_failure_degrades(tmp_path, monkeypatch, caplog):
     assets = tmp_path / "assets"
     (assets / "models").mkdir(parents=True)

@@ -76,6 +76,7 @@ class DuckEars(QObject):
         self._model = None
         self._rec = None
         self._stream = None
+        self._hold = False  # mic lent to the mic-test dialog
         self._want = bool(settings["ears"])
         if not self._want or sd is None:
             return
@@ -122,8 +123,8 @@ class DuckEars(QObject):
             self.stop()
 
     def start(self) -> None:
-        """Open the mic (idempotent). No-ops when deaf."""
-        if self._stream is not None or not self._want or sd is None:
+        """Open the mic (idempotent). No-ops when deaf or on external hold."""
+        if self._stream is not None or not self._want or self._hold or sd is None:
             return
         if self._model_dir is None or not self._ensure_recognizer():
             self.enabled = False
@@ -154,6 +155,34 @@ class DuckEars(QObject):
                 log.debug("ouvido: stream já morto (%s)", e)
             self._stream = None
             log.info("ouvido do pato desligado")
+
+    # --- lending the mic to the test dialog ----------------------------------
+
+    def suspend(self) -> None:
+        """Hand the mic to an external user (the mic-test dialog): the stream
+        stops and stays stopped — start() no-ops until resume(), so a tray
+        toggle mid-test can't reopen it and double-feed the recognizer."""
+        self._hold = True
+        self.stop()
+
+    def resume(self) -> None:
+        """End the external hold; the stream returns when ears are wanted."""
+        self._hold = False
+        if self._want:
+            self.start()
+
+    def prepare_recognizer(self, assets_dir: Path, cache_dir: Path) -> bool:
+        """Resolve the model + recognizer on demand — the ears may have
+        booted deaf, leaving _model_dir unset. True when usable."""
+        if self._model_dir is None:
+            self._model_dir = ensure_model(Path(assets_dir), Path(cache_dir))
+        return self._model_dir is not None and self._ensure_recognizer()
+
+    @property
+    def recognizer(self):
+        """The shared KaldiRecognizer, or None. Feed it only while
+        suspended — a live stream is already feeding it."""
+        return self._rec
 
     def close(self) -> None:
         """App quit."""

@@ -514,6 +514,14 @@ class AppController(QObject):
             log.error("falha ao escrever autostart: %s", e)
             self.window.flash("não foi possível alterar a inicialização")
 
+    def on_mic_test(self) -> None:
+        """Ajuda > Testar microfone: device list, level meter, recognition."""
+        from duckdesk.ui.mic_test import MicTestDialog
+
+        MicTestDialog(
+            self.ears, assets.assets_dir(), Path(self.settings.path).parent, self.window
+        ).exec()
+
     def on_about(self) -> None:
         from duckdesk.ui.about import AboutDialog
 

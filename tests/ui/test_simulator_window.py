@@ -423,6 +423,22 @@ def test_double_click_falls_back_to_mp3_without_voice(ctrl, monkeypatch):
     assert ctrl.beak.quacking  # beak still works on the MP3 envelope
 
 
+def test_mic_test_dialog_builds(ctrl, tmp_path):
+    """Ajuda > Testar microfone: the dialog builds offscreen with deaf ears
+    and never opens a capture on its own."""
+    from duckdesk.ui.mic_test import MicTestDialog
+
+    dlg = MicTestDialog(ctrl.ears, assets.assets_dir(), tmp_path, ctrl.window)
+    assert dlg.windowTitle() == "Teste de microfone"
+    assert dlg._stream is None  # capture starts only via the button
+    dlg.done(0)
+
+
+def test_mic_test_in_help_menu(ctrl):
+    texts = [a.text() for m in ctrl.window.menuBar().actions() for a in m.menu().actions()]
+    assert "Testar microfone…" in texts
+
+
 def test_about_dialog_text():
     from duckdesk.ui.about import ABOUT_TEXT, notices_path
 
